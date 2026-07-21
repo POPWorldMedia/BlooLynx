@@ -9,8 +9,8 @@ Pure local accessors that don't call the network (`Vehicle.Vin()`, `Name()`, `Ni
 | Method | What it actually does |
 | --- | --- |
 | `Client.LoginAsync()` | Authenticate with username/password, establish a session |
-| `Client.RefreshAccessTokenAsync()` | Refresh the access token if it's near expiry (called automatically before every request) |
 | `Client.LogoutAsync()` | Clear the local session (no server-side call) |
+| `Client.IsAuthenticated` | Whether the client currently holds an access token — a local, no-network check |
 | `Client.GetVehiclesAsync()` | List the vehicles on this account |
 | `Vehicle.OdometerAsync()` | Get the current odometer reading |
 | `Vehicle.LocationAsync()` | Get the vehicle's current GPS location |
@@ -90,7 +90,9 @@ On success, populates `Session.AccessToken`/`RefreshToken`/`TokenExpiresAt` and 
 
 ---
 
-## `Client.RefreshAccessTokenAsync()`
+## Token refresh (private — `Client.RefreshAccessTokenAsync`, not directly callable)
+
+Not part of the public API; documented here because it's an HTTP call worth understanding. Runs automatically before every authenticated request via `Client.SendAsync` — there's no way to trigger it manually, and no reason to, since it's a no-op unless the token is actually near expiry.
 
 `POST /v2/ac/oauth/token/refresh`
 

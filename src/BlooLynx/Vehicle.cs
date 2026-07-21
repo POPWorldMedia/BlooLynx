@@ -203,17 +203,11 @@ public class Vehicle
         }
     }
 
-    private readonly struct RunningStatus
+    private readonly struct RunningStatus(string status, TimeSpan? nextPollingInterval)
     {
-        public RunningStatus(string status, TimeSpan? nextPollingInterval)
-        {
-            Status = status;
-            NextPollingInterval = nextPollingInterval;
-        }
+        public string Status { get; } = status;
 
-        public string Status { get; }
-
-        public TimeSpan? NextPollingInterval { get; }
+        public TimeSpan? NextPollingInterval { get; } = nextPollingInterval;
     }
 
     private static RunningStatus ParseRunningStatus(string body)

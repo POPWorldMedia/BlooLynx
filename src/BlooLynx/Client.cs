@@ -19,7 +19,10 @@ public class Client(
 
     public BlueLinkClientConfig UserConfig { get; } = userConfig;
 
-    public Session Session { get; } = new();
+    private Session Session { get; } = new();
+
+    /// <summary>Whether this client currently holds an access token — a local check, not a network call.</summary>
+    public bool IsAuthenticated => Session.AccessToken is not null;
 
     private const string Host = "api.telematics.hyundaiusa.com";
     private const string BaseUrl = "https://api.telematics.hyundaiusa.com";
@@ -69,10 +72,7 @@ public class Client(
     private Task PersistSessionAsync(CancellationToken cancellationToken) =>
         saveSession?.Invoke(Session, cancellationToken) ?? Task.CompletedTask;
 
-    /// <summary>Refreshes the access token if it is due to expire. Safe to call concurrently:
-    /// only one refresh is ever in flight, and callers that arrive while it is running simply
-    /// observe its result.</summary>
-    public async Task<Response> RefreshAccessTokenAsync(CancellationToken cancellationToken = default)
+    private async Task RefreshAccessTokenAsync(CancellationToken cancellationToken = default)
     {
         await EnsureSessionLoadedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -84,7 +84,7 @@ public class Client(
 
             if (string.IsNullOrEmpty(Session.RefreshToken) || !shouldRefresh)
             {
-                return Response.Success();
+                return;
             }
 
             var result = await RequestTokenAsync(
@@ -97,12 +97,11 @@ public class Client(
                 Session.RefreshToken = null;
                 Session.TokenExpiresAt = 0;
                 await PersistSessionAsync(cancellationToken).ConfigureAwait(false);
-                return Response.Failure(result.ResponseCode, result.ErrorMessage!);
+                return;
             }
 
             ApplyToken(result.Data!);
             await PersistSessionAsync(cancellationToken).ConfigureAwait(false);
-            return Response.Success(result.ResponseCode);
         }
         finally
         {
@@ -233,7 +232,8 @@ public class Client(
     private async Task<HttpResponseMessage> RawSendAsync(
         HttpMethod method, string service, Dictionary<string, string?> headers, HttpContent? content, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(method, $"{BaseUrl}/{service.TrimStart('/')}") { Content = content };
+        using var request = new HttpRequestMessage(method, $"{BaseUrl}/{service.TrimStart('/')}");
+        request.Content = content;
         foreach (var (key, value) in headers)
         {
             if (value is not null)
