@@ -11,7 +11,7 @@ public class Client(
     Func<CancellationToken, Task<Session?>>? loadSession = null,
     Func<Session, CancellationToken, Task>? saveSession = null)
 {
-    private const string HttpClientName = "BlooLynx";
+    public const string HttpClientName = "BlooLynx";
 
     private readonly HttpClient _http = httpClientFactory.CreateClient(HttpClientName);
 

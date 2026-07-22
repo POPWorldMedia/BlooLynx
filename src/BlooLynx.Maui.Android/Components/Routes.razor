@@ -1,0 +1,44 @@
+@implements IDisposable
+@inject StateService StateService
+
+@if (!StateService.IsInitialized)
+{
+    <p>Loading...</p>
+}
+else if (StateService.IsAuthenticated)
+{
+    <Router AppAssembly="typeof(MauiProgram).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+else
+{
+    <div class="container">
+        <Login />
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        StateService.StateChanged += HandleStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await StateService.InitializeAsync();
+        }
+    }
+
+    private void HandleStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        StateService.StateChanged -= HandleStateChanged;
+    }
+}
