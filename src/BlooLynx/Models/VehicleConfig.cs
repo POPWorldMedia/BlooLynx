@@ -13,7 +13,10 @@ public class VehicleConfig
     public string RegistrationId { get; set; } = string.Empty;
     public string Id { get; set; } = string.Empty;
     public string Generation { get; set; } = string.Empty;
+    public string ModelYear { get; set; } = string.Empty;
+    public string ModelCode { get; set; } = string.Empty;
+    public string Trim { get; set; } = string.Empty;
 
-    /// <summary>ICE = Internal Combustion Engine, EV = Electric Vehicle.</summary>
-    public string? EngineType { get; set; }
+    /// <summary>From <c>evStatus</c>: <c>"E"</c> is an electric vehicle, anything else (e.g. <c>"N"</c>) is not.</summary>
+    public bool IsEV { get; set; }
 }

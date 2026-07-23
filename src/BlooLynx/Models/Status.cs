@@ -5,8 +5,8 @@ namespace BlooLynx.Models;
 /// </summary>
 public class Status
 {
-    public EngineStatus Engine { get; set; } = new();
+    public DriveTrainStatus DriveTrain { get; set; } = new();
     public ClimateStatus Climate { get; set; } = new();
-    public ChassisStatus Chassis { get; set; } = new();
+    public ClosurePanelStatus ClosurePanels { get; set; } = new();
     public DateTime? LastUpdate { get; set; }
 }

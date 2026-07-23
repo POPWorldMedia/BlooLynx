@@ -25,7 +25,7 @@ Pure local accessors that don't call the network (`Vehicle.Vin()`, `Name()`, `Ni
 
 ## Live verification
 
-`LoginAsync`, `GetVehiclesAsync`, `StatusAsync`, and `LocationAsync` were verified against a real account and vehicle (2026-07-21) via a script that reported only field presence/type, never actual values. All four returned HTTP 200 and every field this library currently reads was present with the expected JSON type — see the "Verified live" notes under each section below for the couple of small discrepancies found. `StartClimateAsync`/`StopClimateAsync`/`LockAsync`/`UnlockAsync`/`StartChargeAsync`/`StopChargeAsync` were **not** exercised, since they act on a real vehicle.
+`LoginAsync`, `GetVehiclesAsync`, `StatusAsync`, and `LocationAsync` were verified against a real account and vehicle via a script that reported only field presence/type, never actual values. All four returned HTTP 200 and every field this library currently reads was present with the expected JSON type — see the "Verified live" notes under each section below for the couple of small discrepancies found. `StartClimateAsync`/`StopClimateAsync`/`LockAsync`/`UnlockAsync`/`StartChargeAsync`/`StopChargeAsync` were **not** exercised, since they act on a real vehicle.
 
 ## Common headers
 
@@ -145,15 +145,18 @@ Response body (only fields read, per enrolled vehicle):
         "brandIndicator": "string",
         "regid": "string",
         "vehicleGeneration": "string",
+        "modelYear": "string",
+        "modelCode": "string",
+        "trim": "string",
         "evStatus": "N | E"
       }
     }
   ]
 }
 ```
-`evStatus: "N"` maps to `EngineType: "ICE"`, `"E"` maps to `"EV"`. Returns `IReadOnlyList<Vehicle>`, each backed by a populated `VehicleConfig`.
+`evStatus: "E"` maps to `VehicleConfig.IsEV: true`; anything else (e.g. `"N"`) maps to `false`. Returns `IReadOnlyList<Vehicle>`, each backed by a populated `VehicleConfig`.
 
-**Verified live**: all fields above confirmed present with the expected types, including `evStatus` as a plain string. Worth noting as a naming trap: `evStatus` means something completely different on `StatusAsync`'s endpoint, where it's a large nested object (see below) — same JSON key, unrelated shape, depending which endpoint you're looking at.
+**Verified live**: all fields above, including `modelYear`, `modelCode`, and `trim`, are present with the expected types. Worth noting as a naming trap: `evStatus` means something completely different on `StatusAsync`'s endpoint, where it's a large nested object (see below) — same JSON key, unrelated shape, depending which endpoint you're looking at.
 
 ---
 
@@ -288,17 +291,17 @@ Response body (`vehicleStatus` object; only fields actually read are shown — t
   }
 }
 ```
-Maps to `Status { Chassis, Climate, Engine, LastUpdate }`:
-- `Chassis`: `HoodOpen`, `TrunkOpen`, `Locked` (from `doorLock`), `OpenDoors`, `TirePressureWarningLamp`.
+Maps to `Status { ClosurePanels, Climate, DriveTrain, LastUpdate }`:
+- `ClosurePanels`: `HoodOpen`, `TrunkOpen`, `Locked` (from `doorLock`), `OpenDoors`.
 - `Climate`: `Active` (from `airCtrlOn`), `SteeringWheelHeat`, `RearWindowHeat` (from `sideBackWindowHeat`), `Defrost`, `TemperatureSetpoint`/`TemperatureUnit` (from `airTemp`; `TemperatureUnit` is an enum, `Celsius = 0`/`Fahrenheit = 1`, confirmed via the same `hyundai_kia_connect_api` source — which notably doesn't bother reading this field itself for the US region, since that API appears to always operate in Fahrenheit regardless).
-- `Engine`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `EngineStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed).
+- `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `DriveTrainStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed), `TirePressureWarningLamp`.
 - `LastUpdate` from `dateTime`, parsed as `DateTime?` (`null` if missing/unparsable).
 
 **Verified live**: every field this library reads was confirmed present with the expected type, including the newly-added `batteryPlugin` and `remainTime2.{atc,etc1,etc2,etc3}`.
 
 **Also observed live but still unmapped** (real, populated fields seen in a live response that this library doesn't currently read — see the full contract below for the complete list): a second GPS location at `vehicleStatus.vehicleLocation.coord` (redundant with `findMyCar`), real per-tire PSI values under `tirePressure`, `windowOpen` state, a live (current, not just settable) `seatHeaterVentInfo`, and several EV fields (`v2G`, `wirelessCharging`, `chargePortDoorOpen`, `dischargingLimit`, a populated `reservChargeInfos.targetSOClist`, and a real charge-schedule/off-peak-power configuration).
 
-### Full response contract (as observed live, 2026-07-21)
+### Full response contract (as observed live)
 
 Every field seen in a real `vehicleStatus` response, not just the subset this library reads. Leaf values are replaced with a type placeholder rather than the real captured values (which included exact GPS coordinates, odometer, and tire pressures) — structure, field names, nesting, and types are all real; the example values are not. Fields already mapped by this library are marked **(mapped)**.
 
@@ -308,8 +311,8 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
   "hataTID": "<string>",
   "vehicleStatus": {
     "dateTime": "<string, ISO 8601>",                      // (mapped) -> Status.LastUpdate
-    "acc": "<bool>",                                       // (mapped) -> Engine.Accessory
-    "fuelLevel": "<int>",
+    "acc": "<bool>",                                       // (mapped) -> DriveTrain.Accessory
+    "fuelLevel": "<int>",                                   // (mapped) -> DriveTrain.FuelLevel
     "defrostStatus": "<string \"true\"|\"false\">",        // string duplicate of defrost below
     "transCond": "<bool>",
     "tirePressure": {
@@ -323,12 +326,12 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
       "datetimeRearRight": "<string, ISO 8601>"
     },
     "doorLockStatus": "<string \"true\"|\"false\">",        // string duplicate of doorLock below
-    "doorOpen": {                                           // (mapped) -> Chassis.OpenDoors
+    "doorOpen": {                                           // (mapped) -> ClosurePanels.OpenDoors
       "frontLeft": "<int, 0|1>", "frontRight": "<int, 0|1>", "backLeft": "<int, 0|1>", "backRight": "<int, 0|1>"
     },
     "washerFluidStatus": "<bool>",
     "battery": {
-      "batSoc": "<int>",                                   // (mapped) -> Engine.BatteryCharge12v
+      "batSoc": "<int>",                                   // (mapped) -> DriveTrain.BatteryCharge12v
       "batState": "<int>",
       "sjbDeliveryMode": "<int>",
       "powerAutoCutMode": "<int>",
@@ -343,9 +346,9 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     "ignitionStatus": "<string \"true\"|\"false\">",
     "lowFuelLight": "<bool>",
     "sideBackWindowHeat": "<int>",                          // (mapped) -> Climate.RearWindowHeat
-    "dte": { "unit": "<int>", "value": "<int>" },           // (mapped) -> Engine.Range (ICE fallback)
-    "engine": "<bool>",                                     // (mapped) -> Engine.Ignition
-    "hoodOpen": "<bool>",                                   // (mapped) -> Chassis.HoodOpen
+    "dte": { "unit": "<int>", "value": "<int>" },           // (mapped) -> DriveTrain.Range/RangeUnit (ICE fallback)
+    "engine": "<bool>",                                     // (mapped) -> DriveTrain.Ignition
+    "hoodOpen": "<bool>",                                   // (mapped) -> ClosurePanels.HoodOpen
     "breakOilStatus": "<bool>",
     "airConditionStatus": "<string \"true\"|\"false\">",    // string duplicate of airCtrlOn below
     "windowOpen": {                                         // unmapped
@@ -355,29 +358,29 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     "smartKeyBatteryWarning": "<bool>",
     "steerWheelHeat": "<int>",                              // (mapped) -> Climate.SteeringWheelHeat
     "tailLampStatus": "<int>",
-    "trunkOpen": "<bool>",                                  // (mapped) -> Chassis.TrunkOpen
+    "trunkOpen": "<bool>",                                  // (mapped) -> ClosurePanels.TrunkOpen
     "trunkOpenStatus": "<string \"true\"|\"false\">",
-    "doorLock": "<bool>",                                   // (mapped) -> Chassis.Locked
+    "doorLock": "<bool>",                                   // (mapped) -> ClosurePanels.Locked
     "odometer": "<int>",
     "airCtrlOn": "<bool>",                                  // (mapped) -> Climate.Active
     "airTemp": { "unit": "<int>", "value": "<string>", "hvacTempType": "<int>" }, // (mapped, minus hvacTempType) -> Climate.TemperatureUnit/TemperatureSetpoint
     "evStatus": {
-      "batteryCharge": "<bool>",                            // (mapped) -> Engine.Charging
-      "batteryStatus": "<int>",                             // (mapped) -> Engine.StateOfCharge
-      "batteryPlugin": "<int, 0-3>",                         // (mapped) -> Engine.PluggedTo
+      "batteryCharge": "<bool>",                            // (mapped) -> DriveTrain.Charging
+      "batteryStatus": "<int>",                             // (mapped) -> DriveTrain.StateOfCharge
+      "batteryPlugin": "<int, 0-3>",                         // (mapped) -> DriveTrain.PluggedTo
       "valueDiff": "<int>", "timeDiff": "<int>",
       "v2G": "<bool>", "wirelessCharging": "<bool>",
       "batteryPrecondition": "<bool>", "batteryDisCharge": "<bool>",
       "batteryDisChargePlugin": "<int>", "disChargeRemaintime": "<int>", "dischargingLimit": "<int>",
       "chargePortDoorOpen": "<int>",
       "remainTime": [ { "unit": "<int>", "value": "<int>" } ],
-      "remainTime2": {                                      // (mapped) -> Engine.Estimated{Current,Fast,Portable,Station}ChargeDuration
+      "remainTime2": {                                      // (mapped) -> DriveTrain.Estimated{Current,Fast,Portable,Station}ChargeDuration
         "atc": { "unit": "<int>", "value": "<int>" },
         "etc1": { "unit": "<int>", "value": "<int>" },
         "etc2": { "unit": "<int>", "value": "<int>" },
         "etc3": { "unit": "<int>", "value": "<int>" }
       },
-      "drvDistance": [                                      // (mapped, totalAvailableRange only) -> Engine.Range
+      "drvDistance": [                                      // (mapped, totalAvailableRange only) -> DriveTrain.Range/RangeUnit
         { "type": "<int>", "rangeByFuel": {
             "totalAvailableRange": { "unit": "<int>", "value": "<int>" },
             "evModeRange": { "unit": "<int>", "value": "<int>" }
@@ -415,7 +418,7 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     },
     "sleepModeCheck": "<bool>",
     "defrost": "<bool>",                                    // (mapped) -> Climate.Defrost
-    "tirePressureLamp": {                                   // (mapped) -> Chassis.TirePressureWarningLamp
+    "tirePressureLamp": {                                   // (mapped) -> DriveTrain.TirePressureWarningLamp
       "tirePressureWarningLampFrontLeft": "<int, 0|1>", "tirePressureWarningLampFrontRight": "<int, 0|1>",
       "tirePressureWarningLampRearLeft": "<int, 0|1>", "tirePressureWarningLampRearRight": "<int, 0|1>",
       "tirePressureWarningLampAll": "<int, 0|1>"
@@ -461,7 +464,7 @@ No response body parsed.
 
 **Confidence note**: paths and body shape come from `hyundai_kia_connect_api` (the same source that confirmed the charge endpoints), and are independently corroborated by the official app's own UI, which exposes exactly these two options — "flash lights" and "horn and lights" — with no separate horn-only control.
 
-**Verified live** (2026-07-21): both fired for real. `FlashLightsAsync` returned HTTP 200 with an empty body, but a genuine `tmsTid` transaction-id response header — the first live confirmation of the transaction-id pattern. `FlashLightsAndHonkAsync`, fired immediately after, got HTTP **502** with a real rate-limit error (see "Error response shape" below) because the previous command was still in flight; retried ~20 seconds later and got HTTP 200 with its own `tmsTid`. Practical implication: **do not fire two remote commands back-to-back** — wait for the previous one to resolve (or at least a several-second buffer) or expect a 502.
+**Verified live**: both fired for real. `FlashLightsAsync` returned HTTP 200 with an empty body, but a genuine `tmsTid` transaction-id response header — the first live confirmation of the transaction-id pattern. `FlashLightsAndHonkAsync`, fired immediately after, got HTTP **502** with a real rate-limit error (see "Error response shape" below) because the previous command was still in flight; retried ~20 seconds later and got HTTP 200 with its own `tmsTid`. Practical implication: **do not fire two remote commands back-to-back** — wait for the previous one to resolve (or at least a several-second buffer) or expect a 502.
 
 ---
 
@@ -473,7 +476,7 @@ Headers: common headers. No request body. No response body parsed.
 
 **Confidence note**: unlike the other endpoints above (all traceable to the community `bluelinky` project, which this library mirrors closely), these two paths come from a different, more actively maintained project (`hyundai_kia_connect_api`) rather than from `bluelinky` itself — `bluelinky`'s own attempt at NA charge control was never resolved. Treat these as the best currently-available answer, not exhaustively confirmed against a live account under real charging conditions.
 
-**Verified live** (2026-07-21, vehicle unplugged): both calls returned HTTP 200 with a **completely empty response body** — no error, no acknowledgment payload of any kind. This confirms the paths are at least accepted by the server, but since the vehicle wasn't plugged in and nothing came back to indicate outcome, this does **not** confirm the command actually does anything when a vehicle is plugged in — that would need testing against an actively charging vehicle to know for sure.
+**Verified live** (vehicle unplugged): both calls returned HTTP 200 with a **completely empty response body** — no error, no acknowledgment payload of any kind. This confirms the paths are at least accepted by the server, but since the vehicle wasn't plugged in and nothing came back to indicate outcome, this does **not** confirm the command actually does anything when a vehicle is plugged in — that would need testing against an actively charging vehicle to know for sure.
 
 ---
 
@@ -500,7 +503,7 @@ No response body parsed.
 
 **History**: an earlier AI-sourced answer for this feature (`POST /ac/v2/evc/vcursv`, a different body shape, and the *opposite* `plugType` assignment) was tested live and confirmed broken — HTTP 400 `"URL mapping Not Found"`, a gateway routing error meaning that path doesn't exist at all. This corrected path, body shape, and `plugType` direction instead match `HyundaiBlueLinkApiUSA.py`'s `set_charge_limits` exactly (the same reference source behind `StartClimateAsync`/`StopClimateAsync`, lock/unlock, and lights/horn — all separately confirmed live).
 
-**Verified live** (2026-07-22): fired with `acTargetPercent: 55, dcTargetPercent: 90`. Returned HTTP 200 with a real transaction id, and `WaitForCommandAsync` resolved `SUCCESS` in well under a second — much faster than lock/unlock's ~17-28 seconds, consistent with this being an account-side config change rather than something requiring a round-trip to the vehicle's modem.
+**Verified live**: fired with `acTargetPercent: 55, dcTargetPercent: 90`. Returned HTTP 200 with a real transaction id, and `WaitForCommandAsync` resolved `SUCCESS` in well under a second — much faster than lock/unlock's ~17-28 seconds, consistent with this being an account-side config change rather than something requiring a round-trip to the vehicle's modem.
 
 Checked against the official app afterward: DC showed exactly `90` (what was sent), AC showed `60` — a **rounding of the `55` sent, up to the nearest 10%**. This both confirms the `plugType` direction (`0 = DC`, `1 = AC`, exactly as implemented) and reveals a real constraint: **AC charge limits only accept 10% increments** and silently round rather than rejecting an in-between value. Whether DC has the same restriction wasn't distinguishable from this test, since `90` sent for DC was already a multiple of 10 — pass a non-multiple like `85` for DC to confirm one way or the other.
 
@@ -530,7 +533,7 @@ Every remote command (`StartClimateAsync`, `StopClimateAsync`, lock/unlock, ligh
 
 ### `Response.TransactionId` / `Vehicle.WaitForCommandAsync(Response, ...)`
 
-This is now wired up (as of 2026-07-22), as an **opt-in** step rather than automatic blocking — every command method still returns as fast as it did before; call `WaitForCommandAsync` yourself when you actually want to confirm the vehicle did something, not just that the server accepted the request.
+This is now wired up, as an **opt-in** step rather than automatic blocking — every command method still returns as fast as it did before; call `WaitForCommandAsync` yourself when you actually want to confirm the vehicle did something, not just that the server accepted the request.
 
 - `Response` now carries a public `TransactionId` (populated automatically by `ResponseFactory` whenever a command response includes one — `null` for non-command responses like `StatusAsync`/`GetVehiclesAsync`) and an internal `ServiceType` the library uses to know which `service_type` value this particular command needs when polled.
 - `Vehicle.WaitForCommandAsync(Response commandResponse, TimeSpan? pollInterval = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default)`:
@@ -548,7 +551,7 @@ var confirmed = await vehicle.WaitForCommandAsync(lockResult);
 
 ### Raw HTTP contract
 
-**Verified live end-to-end** (2026-07-21), using `LockAsync`: fired a real lock, got `tmsTid` back, then polled the endpoint below once a second. Status genuinely progressed `PENDING` (16 times) -> `SUCCESS` over ~17 seconds — real latency to the vehicle, not an instantly-resolved placeholder.
+**Verified live end-to-end**, using `LockAsync`: fired a real lock, got `tmsTid` back, then polled the endpoint below once a second. Status genuinely progressed `PENDING` (16 times) -> `SUCCESS` over ~17 seconds — real latency to the vehicle, not an instantly-resolved placeholder.
 
 `GET /ac/v2/rmt/getRunningStatus`
 
@@ -574,6 +577,4 @@ Response body once resolved:
 
 ## Known gaps
 
-- EV plug status (`PluggedTo`) and estimated charge durations are now modeled (as of 2026-07-21). Charge limits are now settable via `SetChargeLimitsAsync` (as of 2026-07-22) — fully confirmed live, including the `plugType` direction (checked against the official app's UI). Discovered along the way: AC limits appear to only accept 10% increments and silently round rather than reject (untested whether DC has the same restriction). The full charge-schedule/off-peak-power configuration under `evStatus.reservChargeInfos` is confirmed present live but still not modeled.
-- Also confirmed present live but unmodeled: a redundant GPS location on the status endpoint itself (`vehicleStatus.vehicleLocation.coord`), real per-tire PSI values, window-open state, and live seat-heater/vent state (as opposed to just the settable version this library already has).
-- ~~Remote commands are treated as complete once the HTTP call returns 200~~ — resolved 2026-07-22: `Response.TransactionId` + `Vehicle.WaitForCommandAsync` now let callers opt in to real completion confirmation via `rmt/getRunningStatus`. Command methods themselves still return immediately (fast by default); nothing changed there.
+- EV plug status (`PluggedTo`) and estimated charge durations are now modeled. Charge limits are now settable via `SetChargeLimitsAsync` — fully confirmed live, including the `plugType` direction (checked against the official app's UI). Discovered along the way: AC limits appear to only accept 10% increments and silently round rather than reject (untested whether DC has the same restriction). The full charge-schedule/off-peak-power configuration under `evStatus.reservChargeInfos` is confirmed present live but still not modeled.

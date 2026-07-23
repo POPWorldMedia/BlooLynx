@@ -1,3 +1,124 @@
 @page "/"
+@implements IDisposable
+@using BlooLynx
+@using BlooLynx.Models
+@inject StateService StateService
 
-Welcome to your new app.
+@if (StateService.Vehicles.Count == 0)
+{
+    <p>You have no vehicles.</p>
+}
+else
+{
+    <div class="dropdown my-3">
+        <button class="btn btn-secondary @(StateService.Vehicles.Count > 1 ? "dropdown-toggle" : "")" type="button" @onclick="ToggleDropdown" disabled="@(StateService.Vehicles.Count <= 1)">
+            @(_selectedVehicle?.VehicleConfig.Nickname ?? "Select a vehicle")
+        </button>
+        <ul class="dropdown-menu @(_dropdownOpen ? "show" : "")">
+            @foreach (var vehicle in StateService.Vehicles)
+            {
+                <li>
+                    <button class="dropdown-item" type="button" @onclick="() => SelectVehicleAsync(vehicle)">
+                        @vehicle.VehicleConfig.Nickname
+                    </button>
+                </li>
+            }
+        </ul>
+    </div>
+    <p class="small text-capitalize">
+        @_selectedVehicle?.VehicleConfig.ModelYear
+        @_selectedVehicle?.VehicleConfig.ModelCode
+        @_selectedVehicle?.VehicleConfig.Trim
+    </p>
+
+    if (_isLoading)
+    {
+        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+    }
+    else if (_status is not null)
+    {
+        <div class="d-flex justify-content-center text-center">
+            <div class="mx-4">
+                <h1 class="mb-1">@((_selectedVehicle!.VehicleConfig.IsEV ? _status.DriveTrain.StateOfCharge : _status.DriveTrain.FuelLevel)?.ToString() ?? "unknown")%</h1>
+                <div class="small text-capitalize">@(_selectedVehicle.VehicleConfig.IsEV ? "Charge" : "Fuel")</div>
+            </div>
+            <div class="mx-4">
+                <h1 class="mb-1">@_status.DriveTrain.Range @(_status.DriveTrain.RangeUnit == DistanceUnit.Kilometers ? "km" : "mi")</h1>
+                <div class="small text-capitalize">Range</div>
+            </div>
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <p>@_error</p>
+    }
+}
+
+@code {
+    private Vehicle? _selectedVehicle;
+    private Status? _status;
+    private string? _error;
+    private bool _isLoading;
+    private bool _dropdownOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        StateService.Resumed += HandleResumed;
+
+        var vehicle = StateService.Vehicles.FirstOrDefault();
+        if (vehicle is null)
+        {
+            return;
+        }
+
+        await SelectVehicleAsync(vehicle);
+    }
+
+    private void ToggleDropdown()
+    {
+        _dropdownOpen = !_dropdownOpen;
+    }
+
+    private void HandleResumed()
+    {
+        InvokeAsync(RefreshStatusAsync);
+    }
+
+    private async Task SelectVehicleAsync(Vehicle vehicle)
+    {
+        _selectedVehicle = vehicle;
+        _dropdownOpen = false;
+        await RefreshStatusAsync();
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+        _status = null;
+        StateHasChanged();
+
+        var result = await _selectedVehicle.StatusAsync();
+        if (result.IsSuccessful)
+        {
+            _status = result.Data;
+        }
+        else
+        {
+            _error = "Could not load vehicle status.";
+        }
+
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        StateService.Resumed -= HandleResumed;
+    }
+}

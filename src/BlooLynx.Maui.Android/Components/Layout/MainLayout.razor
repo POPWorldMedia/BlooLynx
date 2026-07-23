@@ -1,5 +1,36 @@
 @inherits LayoutComponentBase
+@inject StateService StateService
 
-<div class="container">
-@Body
+<div class="d-flex flex-column vh-100">
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid position-relative">
+            <span class="navbar-brand mb-0 h1">BlooLynx</span>
+            <button class="navbar-toggler" type="button" @onclick="ToggleMenu" aria-label="Toggle menu">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            @if (_menuOpen)
+            {
+                <ul class="dropdown-menu dropdown-menu-end show position-absolute" style="top: 100%; right: 0;">
+                    <li><button type="button" class="dropdown-item" @onclick="LogoutAsync">Logout</button></li>
+                </ul>
+            }
+        </div>
+    </nav>
+
+    <div class="flex-grow-1 overflow-auto container">
+        @Body
+    </div>
 </div>
+
+@code {
+    private bool _menuOpen;
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private async Task LogoutAsync()
+    {
+        _menuOpen = false;
+        await StateService.LogoutAsync();
+    }
+}

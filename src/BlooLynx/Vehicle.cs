@@ -67,7 +67,7 @@ public class Vehicle
 
     public async Task<Response> StartClimateAsync(StartOptions options, CancellationToken cancellationToken = default)
     {
-        var isEv = VehicleConfig.EngineType == "EV";
+        var isEv = VehicleConfig.IsEV;
         var gen2Ev = isEv && VehicleConfig.Generation == "2";
         var startUrl = isEv ? "ac/v2/evc/fatc/start" : "ac/v2/rcs/rsc/start";
 
@@ -242,13 +242,12 @@ public class Vehicle
 
         return new Status
         {
-            Chassis = new ChassisStatus
+            ClosurePanels = new ClosurePanelStatus
             {
                 HoodOpen = GetBool(raw, "hoodOpen"),
                 TrunkOpen = GetBool(raw, "trunkOpen"),
                 Locked = GetBool(raw, "doorLock"),
                 OpenDoors = ParseOpenDoors(raw),
-                TirePressureWarningLamp = ParseTirePressureLamp(raw),
             },
             Climate = new ClimateStatus
             {
@@ -263,25 +262,35 @@ public class Vehicle
                     ? (TemperatureUnit)tu.GetInt32()
                     : TemperatureUnit.Celsius,
             },
-            Engine = new EngineStatus
-            {
-                Ignition = GetBool(raw, "engine"),
-                Accessory = GetBool(raw, "acc"),
-                Range = GetEvOrIceRange(raw),
-                Charging = raw.TryGetProperty("evStatus", out var ev) && ev.TryGetProperty("batteryCharge", out var bc) && bc.GetBoolean(),
-                BatteryCharge12v = raw.TryGetProperty("battery", out var bat) && bat.TryGetProperty("batSoc", out var soc) ? soc.GetDouble() : null,
-                StateOfCharge = raw.TryGetProperty("evStatus", out var ev2) && ev2.TryGetProperty("batteryStatus", out var bs) ? bs.GetDouble() : null,
-                PluggedTo = raw.TryGetProperty("evStatus", out var ev3) && ev3.TryGetProperty("batteryPlugin", out var bp) && bp.ValueKind == JsonValueKind.Number
-                    ? (EvPlugType)bp.GetInt32()
-                    : null,
-                EstimatedCurrentChargeDuration = GetRemainTimeMinutes(raw, "atc"),
-                EstimatedFastChargeDuration = GetRemainTimeMinutes(raw, "etc1"),
-                EstimatedPortableChargeDuration = GetRemainTimeMinutes(raw, "etc2"),
-                EstimatedStationChargeDuration = GetRemainTimeMinutes(raw, "etc3"),
-            },
+            DriveTrain = ParseDriveTrain(raw),
             LastUpdate = raw.TryGetProperty("dateTime", out var dt) && dt.ValueKind == JsonValueKind.String
                 ? DateTime.TryParse(dt.GetString(), out var parsed) ? parsed : null
                 : null,
+        };
+    }
+
+    private static DriveTrainStatus ParseDriveTrain(JsonElement raw)
+    {
+        var (range, rangeUnit) = GetEvOrIceRange(raw);
+
+        return new DriveTrainStatus
+        {
+            Ignition = GetBool(raw, "engine"),
+            Accessory = GetBool(raw, "acc"),
+            Range = range,
+            RangeUnit = rangeUnit,
+            FuelLevel = raw.TryGetProperty("fuelLevel", out var fuelLevel) ? fuelLevel.GetDouble() : null,
+            Charging = raw.TryGetProperty("evStatus", out var ev) && ev.TryGetProperty("batteryCharge", out var bc) && bc.GetBoolean(),
+            BatteryCharge12v = raw.TryGetProperty("battery", out var bat) && bat.TryGetProperty("batSoc", out var soc) ? soc.GetDouble() : null,
+            StateOfCharge = raw.TryGetProperty("evStatus", out var ev2) && ev2.TryGetProperty("batteryStatus", out var bs) ? bs.GetDouble() : null,
+            PluggedTo = raw.TryGetProperty("evStatus", out var ev3) && ev3.TryGetProperty("batteryPlugin", out var bp) && bp.ValueKind == JsonValueKind.Number
+                ? (EvPlugType)bp.GetInt32()
+                : null,
+            EstimatedCurrentChargeDuration = GetRemainTimeMinutes(raw, "atc"),
+            EstimatedFastChargeDuration = GetRemainTimeMinutes(raw, "etc1"),
+            EstimatedPortableChargeDuration = GetRemainTimeMinutes(raw, "etc2"),
+            EstimatedStationChargeDuration = GetRemainTimeMinutes(raw, "etc3"),
+            TirePressureWarningLamp = ParseTirePressureLamp(raw),
         };
     }
 
@@ -293,7 +302,7 @@ public class Vehicle
             ? val.GetDouble()
             : null;
 
-    private static double GetEvOrIceRange(JsonElement vehicleStatus)
+    private static (double Value, DistanceUnit Unit) GetEvOrIceRange(JsonElement vehicleStatus)
     {
         if (vehicleStatus.TryGetProperty("evStatus", out var ev) &&
             ev.TryGetProperty("drvDistance", out var drv) &&
@@ -308,14 +317,19 @@ public class Vehicle
                 var value = val.GetDouble();
                 if (value != 0)
                 {
-                    return value;
+                    var unit = tar.TryGetProperty("unit", out var tarUnit) ? (DistanceUnit)tarUnit.GetInt32() : DistanceUnit.Unspecified;
+                    return (value, unit);
                 }
             }
         }
 
-        return vehicleStatus.TryGetProperty("dte", out var dte) && dte.TryGetProperty("value", out var dteVal)
-            ? dteVal.GetDouble()
-            : 0;
+        if (vehicleStatus.TryGetProperty("dte", out var dte) && dte.TryGetProperty("value", out var dteVal))
+        {
+            var unit = dte.TryGetProperty("unit", out var dteUnit) ? (DistanceUnit)dteUnit.GetInt32() : DistanceUnit.Unspecified;
+            return (dteVal.GetDouble(), unit);
+        }
+
+        return (0, DistanceUnit.Unspecified);
     }
 
     private static bool GetBool(JsonElement element, string property) =>

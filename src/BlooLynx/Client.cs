@@ -283,18 +283,11 @@ public class Client(
                 BrandIndicator = details.TryGetProperty("brandIndicator", out var bi) ? bi.GetString() ?? string.Empty : string.Empty,
                 RegistrationId = details.TryGetProperty("regid", out var regId) ? regId.GetString() ?? string.Empty : string.Empty,
                 Generation = details.TryGetProperty("vehicleGeneration", out var gen) ? gen.GetString() ?? string.Empty : string.Empty,
+                ModelYear = details.TryGetProperty("modelYear", out var modelYear) ? modelYear.GetString() ?? string.Empty : string.Empty,
+                ModelCode = details.TryGetProperty("modelCode", out var modelCode) ? modelCode.GetString() ?? string.Empty : string.Empty,
+                Trim = details.TryGetProperty("trim", out var trim) ? trim.GetString() ?? string.Empty : string.Empty,
+                IsEV = details.TryGetProperty("evStatus", out var evStatus) && evStatus.GetString() == "E",
             };
-
-            if (details.TryGetProperty("evStatus", out var evStatus))
-            {
-                var evValue = evStatus.GetString();
-                config.EngineType = evValue switch
-                {
-                    "N" => "ICE",
-                    "E" => "EV",
-                    _ => config.EngineType,
-                };
-            }
 
             vehicles.Add(new Vehicle(config, this));
         }

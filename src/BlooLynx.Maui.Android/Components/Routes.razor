@@ -3,7 +3,12 @@
 
 @if (!StateService.IsInitialized)
 {
-    <p>Loading...</p>
+    <div class="vh-100 flex-column d-flex align-items-center justify-content-center">
+        <div>Vroom vroom...</div>
+        <div class="progress w-75 mt-2">
+            <div class="progress-bar progress-bar-striped" role="progressbar" style="width: var(--blazor-load-percentage)"></div>
+        </div>
+    </div>
 }
 else if (StateService.IsAuthenticated)
 {
@@ -16,9 +21,7 @@ else if (StateService.IsAuthenticated)
 }
 else
 {
-    <div class="container">
-        <Login />
-    </div>
+    <Login />
 }
 
 @code {
