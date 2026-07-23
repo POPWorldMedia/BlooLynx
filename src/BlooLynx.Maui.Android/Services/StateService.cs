@@ -197,6 +197,25 @@ public class StateService(IHttpClientFactory httpClientFactory)
         }
     }
 
+    /// <summary>Starts or stops charging <paramref name="vehicle"/>, waiting for the command to actually complete on
+    /// the vehicle (via <see cref="Vehicle.WaitForCommandAsync"/>) rather than trusting the initial HTTP 200.</summary>
+    public async Task<Response> ToggleVehicleChargeAsync(Vehicle vehicle, bool currentlyCharging)
+    {
+        try
+        {
+            var commandResult = currentlyCharging ? await vehicle.StopChargeAsync() : await vehicle.StartChargeAsync();
+            return commandResult.IsSuccessful ? await vehicle.WaitForCommandAsync(commandResult) : commandResult;
+        }
+        catch (HttpRequestException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+    }
+
     private async Task<Response<IReadOnlyList<Vehicle>>> FetchVehiclesAsync()
     {
         try

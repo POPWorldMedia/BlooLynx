@@ -10,20 +10,25 @@
 }
 else
 {
-    <div class="dropdown my-3">
-        <button class="btn btn-secondary @(StateService.Vehicles.Count > 1 ? "dropdown-toggle" : "")" type="button" @onclick="ToggleDropdown" disabled="@(StateService.Vehicles.Count <= 1)">
-            @(_selectedVehicle?.VehicleConfig.Nickname ?? "Select a vehicle")
+    <div class="d-flex align-items-center gap-2 my-3">
+        <div class="dropdown">
+            <button class="btn btn-secondary @(StateService.Vehicles.Count > 1 ? "dropdown-toggle" : "")" type="button" @onclick="ToggleDropdown" disabled="@(StateService.Vehicles.Count <= 1)">
+                @(_selectedVehicle?.VehicleConfig.Nickname ?? "Select a vehicle")
+            </button>
+            <ul class="dropdown-menu @(_dropdownOpen ? "show" : "")">
+                @foreach (var vehicle in StateService.Vehicles)
+                {
+                    <li>
+                        <button class="dropdown-item" type="button" @onclick="() => SelectVehicleAsync(vehicle)">
+                            @vehicle.VehicleConfig.Nickname
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+        <button class="btn p-0 border-0 bg-transparent" type="button" @onclick="RefreshAsync" disabled="@(_isLoading || _isPerformingAction)" aria-label="Refresh">
+            @((MarkupString)ArrowClockwiseSvg)
         </button>
-        <ul class="dropdown-menu @(_dropdownOpen ? "show" : "")">
-            @foreach (var vehicle in StateService.Vehicles)
-            {
-                <li>
-                    <button class="dropdown-item" type="button" @onclick="() => SelectVehicleAsync(vehicle)">
-                        @vehicle.VehicleConfig.Nickname
-                    </button>
-                </li>
-            }
-        </ul>
     </div>
     <p class="small text-capitalize">
         @_selectedVehicle?.VehicleConfig.ModelYear
@@ -50,12 +55,29 @@ else
             </div>
         </div>
 
-        <div class="text-center my-3">
-            <button class="btn @(_status.ClosurePanels.Locked ? "btn-success" : "btn-danger") @(_isTogglingLock ? "heartbeat" : "")" type="button" @onclick="ToggleLockAsync" disabled="@_isTogglingLock">
+        <div class="text-center small" style="min-height: 1.25rem;">
+            @_chargingStatus
+        </div>
+
+        <div class="d-flex justify-content-center gap-3 my-3">
+            <button class="btn @(_status.ClosurePanels.Locked ? "btn-success" : "btn-danger") @(_busyAction == VehicleAction.Lock ? "heartbeat" : "")" type="button" @onclick="ToggleLockAsync" disabled="@_isPerformingAction">
                 @((MarkupString)(_status.ClosurePanels.Locked ? LockFillSvg : UnlockFillSvg))
             </button>
+            @if (_selectedVehicle!.VehicleConfig.IsEV)
+            {
+                var isCharging = _status.DriveTrain.Charging ?? false;
+                var isPluggedIn = _status.DriveTrain.PluggedTo is not null and not EvPlugType.Unplugged;
+                <button class="btn @(isCharging ? "btn-success" : "btn-secondary") @(_busyAction == VehicleAction.Charge ? "heartbeat" : "")" type="button" @onclick="ToggleChargeAsync" disabled="@(_isPerformingAction || (!isCharging && !isPluggedIn))">
+                    @((MarkupString)(isCharging ? LightningChargeFillSvg : LightningChargeSvg))
+                </button>
+            }
         </div>
-        
+
+        @if (_actionError is not null)
+        {
+            <p class="text-danger small text-center">@_actionError</p>
+        }
+
         <p class="mt-5">
             @_selectedVehicle.VehicleConfig.Odometer miles<br/>
             VIN: @_selectedVehicle.VehicleConfig.Vin
@@ -76,15 +98,15 @@ else
                     </div>
                     <div class="modal-body">
                         <p>Enter your BlueLink PIN to control the vehicle. It will be saved so you aren't asked again.</p>
-                        <input type="password" inputmode="numeric" class="form-control" @bind="_pinInput" @bind:event="oninput" disabled="@_isTogglingLock" />
+                        <input type="password" inputmode="numeric" class="form-control" @bind="_pinInput" @bind:event="oninput" disabled="@_isPerformingAction" />
                         @if (_pinError is not null)
                         {
                             <p class="text-danger small mt-2 mb-0">@_pinError</p>
                         }
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" @onclick="CancelPinModal" disabled="@_isTogglingLock">Cancel</button>
-                        <button type="button" class="btn btn-primary @(_isTogglingLock ? "heartbeat" : "")" @onclick="SubmitPinAsync" disabled="@(_isTogglingLock || string.IsNullOrWhiteSpace(_pinInput))">Submit</button>
+                        <button type="button" class="btn btn-secondary" @onclick="CancelPinModal" disabled="@_isPerformingAction">Cancel</button>
+                        <button type="button" class="btn btn-primary @(_isPerformingAction ? "heartbeat" : "")" @onclick="SubmitPinAsync" disabled="@(_isPerformingAction || string.IsNullOrWhiteSpace(_pinInput))">Submit</button>
                     </div>
                 </div>
             </div>
@@ -100,15 +122,37 @@ else
     private const string UnlockFillSvg =
         """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M12 0a4 4 0 0 1 4 4v2.5h-1V4a3 3 0 1 0-6 0v2h.5A2.5 2.5 0 0 1 12 8.5v5A2.5 2.5 0 0 1 9.5 16h-7A2.5 2.5 0 0 1 0 13.5v-5A2.5 2.5 0 0 1 2.5 6H8V4a4 4 0 0 1 4-4"/></svg>""";
 
+    private const string LightningChargeFillSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z"/></svg>""";
+
+    private const string LightningChargeSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09zM4.157 8.5H7a.5.5 0 0 1 .478.647L6.11 13.59l5.732-6.09H9a.5.5 0 0 1-.478-.647L9.89 2.41z"/></svg>""";
+
+    private const string ArrowClockwiseSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/></svg>""";
+
+    private enum VehicleAction
+    {
+        Lock,
+        Charge,
+    }
+
     private Vehicle? _selectedVehicle;
     private Status? _status;
     private string? _error;
     private bool _isLoading;
     private bool _dropdownOpen;
-    private bool _isTogglingLock;
+    private bool _isPerformingAction;
+    private VehicleAction? _pendingAction;
+    private VehicleAction? _busyAction;
     private bool _pinModalOpen;
     private string _pinInput = string.Empty;
     private string? _pinError;
+    private string? _actionError;
+
+    /// <summary>Reserved for a future charging-status message; the placeholder it renders into keeps its
+    /// height even while this is empty so the button row below it doesn't shift when text appears.</summary>
+    private string? _chargingStatus;
 
     protected override async Task OnInitializedAsync()
     {
@@ -127,6 +171,10 @@ else
     {
         _dropdownOpen = !_dropdownOpen;
     }
+
+    /// <summary>Re-fetches the vehicle list and the currently selected vehicle's status — the same refresh
+    /// <see cref="StateService.ResumeAsync"/> performs when the app comes back from the background.</summary>
+    private Task RefreshAsync() => StateService.ResumeAsync();
 
     private void HandleResumed()
     {
@@ -147,15 +195,40 @@ else
             return;
         }
 
+        _pendingAction = VehicleAction.Lock;
+
         if (!StateService.HasPin)
         {
-            _pinInput = string.Empty;
-            _pinError = null;
-            _pinModalOpen = true;
+            OpenPinModal();
             return;
         }
 
-        await PerformLockToggleAsync();
+        await PerformLockToggleAsync(pinAlreadyConfirmed: true);
+    }
+
+    private async Task ToggleChargeAsync()
+    {
+        if (_selectedVehicle is null || _status is null)
+        {
+            return;
+        }
+
+        _pendingAction = VehicleAction.Charge;
+
+        if (!StateService.HasPin)
+        {
+            OpenPinModal();
+            return;
+        }
+
+        await PerformChargeToggleAsync(pinAlreadyConfirmed: true);
+    }
+
+    private void OpenPinModal()
+    {
+        _pinInput = string.Empty;
+        _pinError = null;
+        _pinModalOpen = true;
     }
 
     private async Task SubmitPinAsync()
@@ -167,24 +240,36 @@ else
 
         StateService.SetPendingPin(_pinInput.Trim());
         _pinModalOpen = false;
-        await PerformLockToggleAsync();
+
+        if (_pendingAction == VehicleAction.Charge)
+        {
+            await PerformChargeToggleAsync(pinAlreadyConfirmed: false);
+        }
+        else
+        {
+            await PerformLockToggleAsync(pinAlreadyConfirmed: false);
+        }
     }
 
-    /// <summary>Fires the lock/unlock command and waits for it to actually complete. Any failure at all — whatever
-    /// it says — means the PIN didn't work: it's forgotten (memory + storage) and the modal reopens with that exact
-    /// error text so the user can re-enter it. There's no reliable way to tell a bad-PIN failure apart from any
-    /// other kind, so this doesn't try to guess; a network blip means an unnecessary re-prompt, which is a fine
-    /// trade for never silently keeping a broken PIN around. On success, just flips <see cref="_status"/>'s lock
-    /// flag locally rather than re-fetching the whole status (SOC/range haven't changed).</summary>
-    private async Task PerformLockToggleAsync()
+    /// <summary>Fires the lock/unlock command and waits for it to actually complete.
+    /// <paramref name="pinAlreadyConfirmed"/> distinguishes two failure cases: if the PIN in use had already worked
+    /// before this attempt (persisted from a prior success), a failure here isn't evidence the PIN is bad — it's
+    /// shown as an inline <see cref="_actionError"/> and the PIN is left alone. Only a PIN that was just typed into
+    /// the modal and hasn't proven itself yet gets forgotten and reprompted on failure, since there's no reliable
+    /// way to tell a genuinely bad *fresh* PIN apart from any other failure. On success, just flips
+    /// <see cref="_status"/>'s lock flag locally rather than re-fetching the whole status (SOC/range haven't
+    /// changed).</summary>
+    private async Task PerformLockToggleAsync(bool pinAlreadyConfirmed)
     {
         if (_selectedVehicle is null || _status is null)
         {
             return;
         }
 
-        _isTogglingLock = true;
+        _isPerformingAction = true;
+        _busyAction = VehicleAction.Lock;
         _pinError = null;
+        _actionError = null;
         StateHasChanged();
 
         try
@@ -198,6 +283,10 @@ else
                 _pinModalOpen = false;
                 _pinInput = string.Empty;
             }
+            else if (pinAlreadyConfirmed)
+            {
+                _actionError = commandResult.ErrorMessage;
+            }
             else
             {
                 await StateService.ForgetPinAsync();
@@ -208,7 +297,57 @@ else
         }
         finally
         {
-            _isTogglingLock = false;
+            _isPerformingAction = false;
+            _busyAction = null;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Fires the charge start/stop command and waits for it to actually complete. Mirrors
+    /// <see cref="PerformLockToggleAsync"/>'s PIN handling exactly, including the <paramref name="pinAlreadyConfirmed"/>
+    /// distinction — a failure with an already-proven PIN (e.g. the car isn't plugged in) shows an inline
+    /// <see cref="_actionError"/> instead of forgetting a perfectly good PIN. On success, just flips
+    /// <see cref="_status"/>'s charging flag locally rather than re-fetching the whole status.</summary>
+    private async Task PerformChargeToggleAsync(bool pinAlreadyConfirmed)
+    {
+        if (_selectedVehicle is null || _status is null)
+        {
+            return;
+        }
+
+        _isPerformingAction = true;
+        _busyAction = VehicleAction.Charge;
+        _pinError = null;
+        _actionError = null;
+        StateHasChanged();
+
+        try
+        {
+            var wasCharging = _status.DriveTrain.Charging ?? false;
+            var commandResult = await StateService.ToggleVehicleChargeAsync(_selectedVehicle, wasCharging);
+            if (commandResult.IsSuccessful)
+            {
+                await StateService.ConfirmPinAsync();
+                _status.DriveTrain.Charging = !wasCharging;
+                _pinModalOpen = false;
+                _pinInput = string.Empty;
+            }
+            else if (pinAlreadyConfirmed)
+            {
+                _actionError = commandResult.ErrorMessage;
+            }
+            else
+            {
+                await StateService.ForgetPinAsync();
+                _pinError = commandResult.ErrorMessage;
+                _pinInput = string.Empty;
+                _pinModalOpen = true;
+            }
+        }
+        finally
+        {
+            _isPerformingAction = false;
+            _busyAction = null;
             StateHasChanged();
         }
     }
@@ -229,6 +368,7 @@ else
 
         _isLoading = true;
         _error = null;
+        _actionError = null;
         _status = null;
         StateHasChanged();
 
