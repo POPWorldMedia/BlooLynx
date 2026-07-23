@@ -96,6 +96,12 @@ h1:focus {
     animation: heartbeat 1s ease-in-out infinite;
 }
 
+.climate-on {
+    background: linear-gradient(to bottom, #0d6efd, #dc3545);
+    border-color: transparent;
+    color: white;
+}
+
 .status-bar-safe-area {
     display: none;
 }
