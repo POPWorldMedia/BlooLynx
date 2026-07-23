@@ -18,8 +18,10 @@ public class Vehicle
 
     public async Task<Response<Odometer>> OdometerAsync(CancellationToken cancellationToken = default)
     {
+        var headers = _client.BuildHeaders(VehicleConfig);
+        var path = $"{ApiPaths.EnrollmentDetails}/{_client.UserConfig.Username}";
         var response = await _client.SendAsync(
-            HttpMethod.Get, $"/ac/v2/enrollment/details/{_client.UserConfig.Username}", _client.BuildHeaders(VehicleConfig), null,
+            HttpMethod.Get, path, headers, null,
             cancellationToken).ConfigureAwait(false);
 
         return await ResponseFactory.FromHttpResponseAsync(response, ParseOdometer).ConfigureAwait(false);
@@ -28,8 +30,25 @@ public class Vehicle
     private Odometer ParseOdometer(string body)
     {
         using var doc = JsonDocument.Parse(body);
-        var found = doc.RootElement.GetProperty("enrolledVehicleDetails").EnumerateArray()
-            .First(item => item.GetProperty("vehicleDetails").GetProperty("vin").GetString() == VehicleConfig.Vin);
+        var enrolledVehicleDetails = doc.RootElement.GetProperty("enrolledVehicleDetails");
+
+        JsonElement found = default;
+        var foundMatch = false;
+        foreach (var item in enrolledVehicleDetails.EnumerateArray())
+        {
+            var vin = item.GetProperty("vehicleDetails").GetProperty("vin").GetString();
+            if (vin == VehicleConfig.Vin)
+            {
+                found = item;
+                foundMatch = true;
+                break;
+            }
+        }
+
+        if (!foundMatch)
+        {
+            throw new InvalidOperationException($"No enrolled vehicle details found for VIN {VehicleConfig.Vin}.");
+        }
 
         return new Odometer
         {
@@ -41,7 +60,8 @@ public class Vehicle
     /// <summary>Always polls the vehicle modem directly; there is no caching on the API side.</summary>
     public async Task<Response<Location>> LocationAsync(CancellationToken cancellationToken = default)
     {
-        var response = await _client.SendAsync(HttpMethod.Get, "/ac/v2/rcs/rfc/findMyCar", _client.BuildHeaders(VehicleConfig), null, cancellationToken)
+        var headers = _client.BuildHeaders(VehicleConfig);
+        var response = await _client.SendAsync(HttpMethod.Get, ApiPaths.FindMyCar, headers, null, cancellationToken)
             .ConfigureAwait(false);
 
         return await ResponseFactory.FromHttpResponseAsync(response, ParseLocation).ConfigureAwait(false);
@@ -69,7 +89,7 @@ public class Vehicle
     {
         var isEv = VehicleConfig.IsEV;
         var gen2Ev = isEv && VehicleConfig.Generation == "2";
-        var startUrl = isEv ? "ac/v2/evc/fatc/start" : "ac/v2/rcs/rsc/start";
+        var startUrl = isEv ? ApiPaths.ClimateStartEv : ApiPaths.ClimateStart;
 
         var heatedFeatures = 0;
         if (options.HeatedFeatures != 0)
@@ -121,7 +141,8 @@ public class Vehicle
             body["seatHeaterVentInfo"] = seatClimateOptions;
         }
 
-        var content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+        var bodyJson = body.ToJsonString();
+        var content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
         return await ExecuteActionAsync(HttpMethod.Post, startUrl, content, cancellationToken).ConfigureAwait(false);
     }
 
@@ -134,14 +155,15 @@ public class Vehicle
     }
 
     public Task<Response> StopClimateAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/rcs/rsc/stop", null, cancellationToken);
+        ExecuteActionAsync(HttpMethod.Post, ApiPaths.ClimateStop, null, cancellationToken);
 
     /// <summary>Sends a control-endpoint request and returns its outcome, tagged with the service_type
     /// <see cref="WaitForCommandAsync"/> needs to poll for this specific command's completion.</summary>
     private async Task<Response> ExecuteActionAsync(
         HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken, string serviceType = "REMOTE_POLL")
     {
-        var responseMessage = await _client.SendAsync(method, path, _client.BuildHeaders(VehicleConfig), content, cancellationToken).ConfigureAwait(false);
+        var headers = _client.BuildHeaders(VehicleConfig);
+        var responseMessage = await _client.SendAsync(method, path, headers, content, cancellationToken).ConfigureAwait(false);
         var response = await ResponseFactory.FromHttpResponseAsync(responseMessage, serviceType).ConfigureAwait(false);
         return response;
     }
@@ -181,7 +203,7 @@ public class Vehicle
             headers["login_id"] = _client.UserConfig.Username;
             headers["service_type"] = serviceType;
 
-            using var httpResponse = await _client.SendAsync(HttpMethod.Get, "/ac/v2/rmt/getRunningStatus", headers, null, cancellationToken)
+            using var httpResponse = await _client.SendAsync(HttpMethod.Get, ApiPaths.RunningStatus, headers, null, cancellationToken)
                 .ConfigureAwait(false);
             var result = await ResponseFactory.FromHttpResponseAsync(httpResponse, ParseRunningStatus).ConfigureAwait(false);
 
@@ -222,11 +244,16 @@ public class Vehicle
         var root = doc.RootElement;
 
         var status = root.TryGetProperty("status", out var s) ? s.GetString() ?? string.Empty : string.Empty;
-        var nextPollingInterval = root.TryGetProperty("nextPollingInterval", out var n) &&
-            n.ValueKind == JsonValueKind.String &&
-            int.TryParse(n.GetString(), out var seconds)
-                ? TimeSpan.FromSeconds(seconds)
-                : (TimeSpan?)null;
+
+        TimeSpan? nextPollingInterval = null;
+        if (root.TryGetProperty("nextPollingInterval", out var n) && n.ValueKind == JsonValueKind.String)
+        {
+            var nextPollingIntervalText = n.GetString();
+            if (int.TryParse(nextPollingIntervalText, out var seconds))
+            {
+                nextPollingInterval = TimeSpan.FromSeconds(seconds);
+            }
+        }
 
         return new RunningStatus(status, nextPollingInterval);
     }
@@ -235,7 +262,7 @@ public class Vehicle
     {
         var headers = _client.BuildHeaders(VehicleConfig, refresh);
 
-        var response = await _client.SendAsync(HttpMethod.Get, "/ac/v2/rcs/rvs/vehicleStatus", headers, null, cancellationToken)
+        var response = await _client.SendAsync(HttpMethod.Get, ApiPaths.VehicleStatus, headers, null, cancellationToken)
             .ConfigureAwait(false);
 
         return await ResponseFactory.FromHttpResponseAsync(response, ParseStatus).ConfigureAwait(false);
@@ -269,10 +296,19 @@ public class Vehicle
                     : TemperatureUnit.Celsius,
             },
             DriveTrain = ParseDriveTrain(raw),
-            LastUpdate = raw.TryGetProperty("dateTime", out var dt) && dt.ValueKind == JsonValueKind.String
-                ? DateTime.TryParse(dt.GetString(), out var parsed) ? parsed : null
-                : null,
+            LastUpdate = ParseLastUpdate(raw),
         };
+    }
+
+    private static DateTime? ParseLastUpdate(JsonElement raw)
+    {
+        if (!raw.TryGetProperty("dateTime", out var dt) || dt.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var dateTimeText = dt.GetString();
+        return DateTime.TryParse(dateTimeText, out var parsed) ? parsed : null;
     }
 
     private static DriveTrainStatus ParseDriveTrain(JsonElement raw)
@@ -383,11 +419,17 @@ public class Vehicle
         };
     }
 
-    public Task<Response> UnlockAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/rcs/rdo/on", BuildUserVinForm(), cancellationToken);
+    public Task<Response> UnlockAsync(CancellationToken cancellationToken = default)
+    {
+        var content = BuildUserVinForm();
+        return ExecuteActionAsync(HttpMethod.Post, ApiPaths.Unlock, content, cancellationToken);
+    }
 
-    public Task<Response> LockAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/rcs/rdo/off", BuildUserVinForm(), cancellationToken);
+    public Task<Response> LockAsync(CancellationToken cancellationToken = default)
+    {
+        var content = BuildUserVinForm();
+        return ExecuteActionAsync(HttpMethod.Post, ApiPaths.Lock, content, cancellationToken);
+    }
 
     private FormUrlEncodedContent BuildUserVinForm() =>
         new(new Dictionary<string, string>
@@ -396,11 +438,17 @@ public class Vehicle
             ["vin"] = VehicleConfig.Vin,
         });
 
-    public Task<Response> FlashLightsAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/rcs/rhl/light", BuildUserVinJson(), cancellationToken, serviceType: "LIGHTS_ONLY");
+    public Task<Response> FlashLightsAsync(CancellationToken cancellationToken = default)
+    {
+        var content = BuildUserVinJson();
+        return ExecuteActionAsync(HttpMethod.Post, ApiPaths.FlashLights, content, cancellationToken, serviceType: "LIGHTS_ONLY");
+    }
 
-    public Task<Response> FlashLightsAndHonkAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/rcs/rhl/hnl", BuildUserVinJson(), cancellationToken, serviceType: "HORN_AND_LIGHTS");
+    public Task<Response> FlashLightsAndHonkAsync(CancellationToken cancellationToken = default)
+    {
+        var content = BuildUserVinJson();
+        return ExecuteActionAsync(HttpMethod.Post, ApiPaths.FlashLightsAndHonk, content, cancellationToken, serviceType: "HORN_AND_LIGHTS");
+    }
 
     private StringContent BuildUserVinJson()
     {
@@ -409,14 +457,15 @@ public class Vehicle
             ["userName"] = _client.UserConfig.Username,
             ["vin"] = VehicleConfig.Vin,
         };
-        return new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+        var bodyJson = body.ToJsonString();
+        return new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
     }
 
     public Task<Response> StartChargeAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/evc/charge/start", null, cancellationToken);
+        ExecuteActionAsync(HttpMethod.Post, ApiPaths.ChargeStart, null, cancellationToken);
 
     public Task<Response> StopChargeAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, "/ac/v2/evc/charge/stop", null, cancellationToken);
+        ExecuteActionAsync(HttpMethod.Post, ApiPaths.ChargeStop, null, cancellationToken);
 
     /// <summary>
     /// Sets the target state-of-charge (as a percentage) for AC (Level 2 / slow) and DC (Level 3 / fast)
@@ -435,7 +484,8 @@ public class Vehicle
             },
         };
 
-        var content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
-        return ExecuteActionAsync(HttpMethod.Post, "/ac/v2/evc/charge/targetsoc/set", content, cancellationToken);
+        var bodyJson = body.ToJsonString();
+        var content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+        return ExecuteActionAsync(HttpMethod.Post, ApiPaths.ChargeTargetSocSet, content, cancellationToken);
     }
 }

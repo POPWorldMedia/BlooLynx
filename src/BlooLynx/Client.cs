@@ -88,7 +88,7 @@ public class Client(
             }
 
             var result = await RequestTokenAsync(
-                "v2/ac/oauth/token/refresh", new { refresh_token = Session.RefreshToken }, cancellationToken).ConfigureAwait(false);
+                ApiPaths.OAuthTokenRefresh, new { refresh_token = Session.RefreshToken }, cancellationToken).ConfigureAwait(false);
             if (!result.IsSuccessful)
             {
                 // The refresh token is presumed dead (expired/revoked): clear the session so we stop retrying it on
@@ -112,7 +112,7 @@ public class Client(
     public async Task<Response> LoginAsync(CancellationToken cancellationToken = default)
     {
         var result = await RequestTokenAsync(
-            "v2/ac/oauth/token", new { username = UserConfig.Username, password = UserConfig.Password }, cancellationToken)
+            ApiPaths.OAuthToken, new { username = UserConfig.Username, password = UserConfig.Password }, cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccessful)
         {
@@ -143,10 +143,12 @@ public class Client(
             ["client_secret"] = ClientSecret,
         };
 
-        using var response = await RawSendAsync(HttpMethod.Post, service, headers, JsonContent.Create(payload), cancellationToken)
+        var content = JsonContent.Create(payload);
+        using var response = await RawSendAsync(HttpMethod.Post, service, headers, content, cancellationToken)
             .ConfigureAwait(false);
 
-        return await ResponseFactory.FromHttpResponseAsync(response, body => JsonSerializer.Deserialize<TokenResponse>(body)!)
+        Func<string, TokenResponse> parseTokenResponse = body => JsonSerializer.Deserialize<TokenResponse>(body)!;
+        return await ResponseFactory.FromHttpResponseAsync(response, parseTokenResponse)
             .ConfigureAwait(false);
     }
 
@@ -256,8 +258,9 @@ public class Client(
             ["includeNonConnectedVehicles"] = "Y",
         };
 
+        var path = $"{ApiPaths.EnrollmentDetails}/{UserConfig.Username}";
         using var response = await SendAsync(
-            HttpMethod.Get, $"ac/v2/enrollment/details/{UserConfig.Username}", headers, null, cancellationToken).ConfigureAwait(false);
+            HttpMethod.Get, path, headers, null, cancellationToken).ConfigureAwait(false);
 
         return await ResponseFactory.FromHttpResponseAsync(response, ParseVehicles).ConfigureAwait(false);
     }
@@ -289,7 +292,8 @@ public class Client(
                 IsEV = details.TryGetProperty("evStatus", out var evStatus) && evStatus.GetString() == "E",
             };
 
-            vehicles.Add(new Vehicle(config, this));
+            var vehicle = new Vehicle(config, this);
+            vehicles.Add(vehicle);
         }
 
         return vehicles;
