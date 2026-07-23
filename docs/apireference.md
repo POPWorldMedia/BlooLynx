@@ -12,7 +12,6 @@ Pure local accessors that don't call the network (`Vehicle.Vin()`, `Name()`, `Ni
 | `Client.LogoutAsync()` | Clear the local session (no server-side call) |
 | `Client.IsAuthenticated` | Whether the client currently holds an access token — a local, no-network check |
 | `Client.GetVehiclesAsync()` | List the vehicles on this account |
-| `Vehicle.OdometerAsync()` | Get the current odometer reading |
 | `Vehicle.LocationAsync()` | Get the vehicle's current GPS location |
 | `Vehicle.StartClimateAsync(StartOptions)` | HVAC on/off, target temperature, defrost, seat heat, steering-wheel heat |
 | `Vehicle.StopClimateAsync()` | Turns off whatever `StartClimateAsync` turned on |
@@ -158,25 +157,7 @@ Response body (only fields read, per enrolled vehicle):
 
 **Verified live**: all fields above, including `modelYear`, `modelCode`, and `trim`, are present with the expected types. Worth noting as a naming trap: `evStatus` means something completely different on `StatusAsync`'s endpoint, where it's a large nested object (see below) — same JSON key, unrelated shape, depending which endpoint you're looking at.
 
----
-
-## `Vehicle.OdometerAsync()`
-
-`GET /ac/v2/enrollment/details/{username}` — same endpoint as `GetVehiclesAsync`, re-parsed to pull out just this VIN's odometer reading.
-
-Headers: common headers.
-
-No request body.
-
-Response fields read (matched by `vin`):
-```json
-{
-  "enrolledVehicleDetails": [
-    { "vehicleDetails": { "vin": "string", "odometer": 12345.0 } }
-  ]
-}
-```
-Maps to `Odometer { Value, DistanceUnit }`. `DistanceUnit` (an enum — see `Models/DistanceUnit.cs`) is hardcoded to `DistanceUnit.Unspecified` (0); the odometer payload doesn't actually carry a unit field at all, so this is a library-invented placeholder, not something read from the API. The enum's other values (`Kilometers = 1`, `MilesAlternate = 2`, `Miles = 3`) come from `hyundai_kia_connect_api`'s `DISTANCE_UNITS` lookup table — `Miles` is additionally confirmed independently from real range figures seen elsewhere in the API (`dte`/`totalAvailableRange`), `MilesAlternate` (2) has not been independently observed.
+`odometer` from the same response is captured as `VehicleConfig.Odometer` — there is no separate method for it, since it's just this same enrollment-list response re-read.
 
 ---
 

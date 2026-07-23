@@ -290,6 +290,7 @@ public class Client(
                 ModelCode = details.TryGetProperty("modelCode", out var modelCode) ? modelCode.GetString() ?? string.Empty : string.Empty,
                 Trim = details.TryGetProperty("trim", out var trim) ? trim.GetString() ?? string.Empty : string.Empty,
                 IsEV = details.TryGetProperty("evStatus", out var evStatus) && evStatus.GetString() == "E",
+                Odometer = details.TryGetProperty("odometer", out var odometer) ? odometer.GetDouble() : (double?)null,
             };
 
             var vehicle = new Vehicle(config, this);

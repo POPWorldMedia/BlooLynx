@@ -19,4 +19,7 @@ public class VehicleConfig
 
     /// <summary>From <c>evStatus</c>: <c>"E"</c> is an electric vehicle, anything else (e.g. <c>"N"</c>) is not.</summary>
     public bool IsEV { get; set; }
+
+    /// <summary>The odometer reading captured at enrollment time, if the account's enrollment list included one.</summary>
+    public double? Odometer { get; set; }
 }

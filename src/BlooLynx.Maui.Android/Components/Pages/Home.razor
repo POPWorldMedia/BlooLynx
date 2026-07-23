@@ -53,6 +53,11 @@ else
                 @((MarkupString)(_status.ClosurePanels.Locked ? LockFillSvg : UnlockFillSvg))
             </button>
         </div>
+        
+        <p class="mt-5">
+            @_selectedVehicle.VehicleConfig.Odometer miles<br/>
+            VIN: @_selectedVehicle.VehicleConfig.Vin
+        </p>
     }
     else if (_error is not null)
     {

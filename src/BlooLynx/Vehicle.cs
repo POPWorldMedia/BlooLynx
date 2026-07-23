@@ -16,47 +16,6 @@ public class Vehicle
 
     public VehicleConfig VehicleConfig { get; }
 
-    public async Task<Response<Odometer>> OdometerAsync(CancellationToken cancellationToken = default)
-    {
-        var headers = _client.BuildHeaders(VehicleConfig);
-        var path = $"{ApiPaths.EnrollmentDetails}/{_client.UserConfig.Username}";
-        var response = await _client.SendAsync(
-            HttpMethod.Get, path, headers, null,
-            cancellationToken).ConfigureAwait(false);
-
-        return await ResponseFactory.FromHttpResponseAsync(response, ParseOdometer).ConfigureAwait(false);
-    }
-
-    private Odometer ParseOdometer(string body)
-    {
-        using var doc = JsonDocument.Parse(body);
-        var enrolledVehicleDetails = doc.RootElement.GetProperty("enrolledVehicleDetails");
-
-        JsonElement found = default;
-        var foundMatch = false;
-        foreach (var item in enrolledVehicleDetails.EnumerateArray())
-        {
-            var vin = item.GetProperty("vehicleDetails").GetProperty("vin").GetString();
-            if (vin == VehicleConfig.Vin)
-            {
-                found = item;
-                foundMatch = true;
-                break;
-            }
-        }
-
-        if (!foundMatch)
-        {
-            throw new InvalidOperationException($"No enrolled vehicle details found for VIN {VehicleConfig.Vin}.");
-        }
-
-        return new Odometer
-        {
-            Value = found.GetProperty("vehicleDetails").GetProperty("odometer").GetDouble(),
-            DistanceUnit = DistanceUnit.Unspecified,
-        };
-    }
-
     /// <summary>Always polls the vehicle modem directly; there is no caching on the API side.</summary>
     public async Task<Response<Location>> LocationAsync(CancellationToken cancellationToken = default)
     {
