@@ -13,7 +13,7 @@ public class Client(
 {
     public const string HttpClientName = "BlooLynx";
 
-    private readonly HttpClient _http = httpClientFactory.CreateClient(HttpClientName);
+    private readonly HttpClient _httpClient = httpClientFactory.CreateClient(HttpClientName);
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
@@ -220,19 +220,19 @@ public class Client(
 
     /// <summary>Sends an authenticated request, refreshing the access token first if it is due to expire.</summary>
     internal async Task<HttpResponseMessage> SendAsync(
-        HttpMethod method, string service, Dictionary<string, string?> headers, HttpContent? content, CancellationToken cancellationToken = default)
+        HttpMethod method, string path, Dictionary<string, string?> headers, HttpContent? content, CancellationToken cancellationToken = default)
     {
         await RefreshAccessTokenAsync(cancellationToken).ConfigureAwait(false);
         headers["access_token"] = Session.AccessToken;
 
-        return await RawSendAsync(method, service, headers, content, cancellationToken).ConfigureAwait(false);
+        return await RawSendAsync(method, path, headers, content, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Builds and sends a single HTTP request. Does not apply auth headers or refresh the token.</summary>
     private async Task<HttpResponseMessage> RawSendAsync(
-        HttpMethod method, string service, Dictionary<string, string?> headers, HttpContent? content, CancellationToken cancellationToken)
+        HttpMethod method, string path, Dictionary<string, string?> headers, HttpContent? content, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(method, $"{BaseUrl}/{service.TrimStart('/')}");
+        using var request = new HttpRequestMessage(method, $"{BaseUrl}/{path.TrimStart('/')}");
         request.Content = content;
         foreach (var (key, value) in headers)
         {
@@ -242,7 +242,7 @@ public class Client(
             }
         }
 
-        return await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Response<IReadOnlyList<Vehicle>>> GetVehiclesAsync(CancellationToken cancellationToken = default)

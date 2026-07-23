@@ -9,6 +9,12 @@ internal static class ResponseFactory
 {
     private static readonly string[] TransactionIdHeaders = { "tmsTid", "transactionId", "Xid" };
 
+    /// <summary>Used exclusively by <see cref="Vehicle"/>'s remote-command methods (lock/unlock, climate, charge,
+    /// lights/horn) via <c>ExecuteActionAsync</c> — every one of those is expected to carry a transaction id on a
+    /// genuine success. A 2xx with no transaction id means the command was never actually dispatched to the vehicle
+    /// (observed live with a bad <c>bluelinkservicepin</c>), so that's treated as a failure here rather than success
+    /// — otherwise a fire-and-forget call like <c>FlashLightsAsync</c> (nobody polls to confirm lights flashed)
+    /// would report success even when nothing happened.</summary>
     public static async Task<Response> FromHttpResponseAsync(HttpResponseMessage response, string? serviceType = null)
     {
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -19,6 +25,11 @@ internal static class ResponseFactory
         }
 
         var transactionId = GetFirstTransactionIdHeaderValue(response);
+        if (transactionId is null)
+        {
+            return Response.Failure((int)response.StatusCode, "Command was not accepted. This usually means the PIN was wrong.");
+        }
+
         return Response.Success((int)response.StatusCode, transactionId, serviceType);
     }
 

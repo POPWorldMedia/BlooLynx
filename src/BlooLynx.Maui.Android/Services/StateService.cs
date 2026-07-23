@@ -12,11 +12,27 @@ namespace BlooLynx.Maui.Android.Services;
 /// in MAUI Blazor Hybrid, NavigationManager isn't usable until the WebView reports its first navigation has
 /// completed, which happens after the component tree's first render — so calling it during startup throws. Routes
 /// reacts to <see cref="StateChanged"/> instead and swaps components directly.
+///
+/// Three independent things live in <see cref="SecureStorage"/>, each under its own key, and none of them overlap:
+/// <list type="bullet">
+/// <item><description><see cref="ConfigStorageKey"/>: the BlueLink username/password, as a serialized
+/// <see cref="BlueLinkClientConfig"/>. Loaded at startup by <see cref="InitializeAsync"/> to auto-login without
+/// re-prompting; written by <see cref="SaveConfigAsync"/>.</description></item>
+/// <item><description><see cref="SessionStorageKey"/>: the OAuth <see cref="Session"/> (access/refresh token),
+/// managed entirely by <see cref="Client"/> itself via the <see cref="LoadSessionAsync"/>/<see cref="SaveSessionAsync"/>
+/// callbacks — this class never reads or writes it directly.</description></item>
+/// <item><description><see cref="PinStorageKey"/>: the confirmed-working remote-command PIN, as a plain string.
+/// Deliberately separate from <see cref="ConfigStorageKey"/> (not bundled into <see cref="BlueLinkClientConfig"/>'s
+/// storage) so it's unambiguous where it lives and how it's cleared. See <see cref="SetPendingPin"/>/
+/// <see cref="ConfirmPinAsync"/>/<see cref="ForgetPinAsync"/>.</description></item>
+/// </list>
+/// <see cref="LogoutAsync"/> removes all three keys explicitly.
 /// </remarks>
 public class StateService(IHttpClientFactory httpClientFactory)
 {
     private const string ConfigStorageKey = "bloolynx_config";
     private const string SessionStorageKey = "bloolynx_session";
+    private const string PinStorageKey = "bloolynx_pin";
 
     public event Action? StateChanged;
 
@@ -33,6 +49,8 @@ public class StateService(IHttpClientFactory httpClientFactory)
 
     public bool IsAuthenticated { get; private set; }
 
+    public bool HasPin => !string.IsNullOrEmpty(_config?.Pin);
+
     /// <summary>
     /// Loads config from secure storage and, if present, validates the stored session against the API. Safe to call
     /// once at app startup.
@@ -48,6 +66,7 @@ public class StateService(IHttpClientFactory httpClientFactory)
             return;
         }
 
+        _config.Pin = await LoadAsync<string>(PinStorageKey);
         _client = new Client(_config, httpClientFactory, LoadSessionAsync, SaveSessionAsync);
 
         var vehiclesResult = await FetchVehiclesAsync();
@@ -97,6 +116,7 @@ public class StateService(IHttpClientFactory httpClientFactory)
         var config = new BlueLinkClientConfig { Username = username, Password = password };
         await SaveConfigAsync(config);
 
+        config.Pin = await LoadAsync<string>(PinStorageKey);
         _client = new Client(config, httpClientFactory, LoadSessionAsync, SaveSessionAsync);
 
         Response result;
@@ -126,6 +146,55 @@ public class StateService(IHttpClientFactory httpClientFactory)
         }
 
         return result;
+    }
+
+    /// <summary>Sets the PIN in memory only, so the next command sent to the API uses it, without persisting it —
+    /// call <see cref="ConfirmPinAsync"/> once a command using it has actually succeeded against the API.</summary>
+    public void SetPendingPin(string pin)
+    {
+        if (_config is not null)
+        {
+            _config.Pin = pin;
+        }
+    }
+
+    /// <summary>Forgets a PIN that turned out to be wrong — whether it was only just set via <see cref="SetPendingPin"/>
+    /// and never confirmed, or was confirmed and saved in an earlier session and has since been found bad. Clears
+    /// both the in-memory value and <see cref="PinStorageKey"/>, so the user is prompted for a fresh one next time
+    /// instead of the bad one being silently reused.</summary>
+    public Task ForgetPinAsync()
+    {
+        if (_config is not null)
+        {
+            _config.Pin = null;
+        }
+
+        SecureStorage.Default.Remove(PinStorageKey);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Persists the currently in-memory PIN (set via <see cref="SetPendingPin"/>) to <see cref="PinStorageKey"/>
+    /// so the user is never asked for it again. Does not touch <see cref="ConfigStorageKey"/> — the PIN is stored
+    /// independently of the username/password.</summary>
+    public Task ConfirmPinAsync() => _config?.Pin is null ? Task.CompletedTask : SaveAsync(PinStorageKey, _config.Pin);
+
+    /// <summary>Locks or unlocks <paramref name="vehicle"/>, waiting for the command to actually complete on the
+    /// vehicle (via <see cref="Vehicle.WaitForCommandAsync"/>) rather than trusting the initial HTTP 200.</summary>
+    public async Task<Response> ToggleVehicleLockAsync(Vehicle vehicle, bool currentlyLocked)
+    {
+        try
+        {
+            var commandResult = currentlyLocked ? await vehicle.UnlockAsync() : await vehicle.LockAsync();
+            return commandResult.IsSuccessful ? await vehicle.WaitForCommandAsync(commandResult) : commandResult;
+        }
+        catch (HttpRequestException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
     }
 
     private async Task<Response<IReadOnlyList<Vehicle>>> FetchVehiclesAsync()
@@ -164,6 +233,7 @@ public class StateService(IHttpClientFactory httpClientFactory)
 
         SecureStorage.Default.Remove(ConfigStorageKey);
         SecureStorage.Default.Remove(SessionStorageKey);
+        SecureStorage.Default.Remove(PinStorageKey);
 
         _config = null;
         _client = null;

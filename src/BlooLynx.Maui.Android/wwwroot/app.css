@@ -80,6 +80,20 @@ h1:focus {
     text-align: start;
 }
 
+@keyframes heartbeat {
+    0%, 100% {
+        background-color: #6c757d;
+    }
+
+    50% {
+        background-color: #adb5bd;
+    }
+}
+
+.heartbeat {
+    animation: heartbeat 1s ease-in-out infinite;
+}
+
 .status-bar-safe-area {
     display: none;
 }

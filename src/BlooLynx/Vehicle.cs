@@ -139,19 +139,25 @@ public class Vehicle
     /// <summary>Sends a control-endpoint request and returns its outcome, tagged with the service_type
     /// <see cref="WaitForCommandAsync"/> needs to poll for this specific command's completion.</summary>
     private async Task<Response> ExecuteActionAsync(
-        HttpMethod method, string service, HttpContent? content, CancellationToken cancellationToken, string serviceType = "REMOTE_POLL")
+        HttpMethod method, string path, HttpContent? content, CancellationToken cancellationToken, string serviceType = "REMOTE_POLL")
     {
-        var response = await _client.SendAsync(method, service, _client.BuildHeaders(VehicleConfig), content, cancellationToken).ConfigureAwait(false);
-        return await ResponseFactory.FromHttpResponseAsync(response, serviceType).ConfigureAwait(false);
+        var responseMessage = await _client.SendAsync(method, path, _client.BuildHeaders(VehicleConfig), content, cancellationToken).ConfigureAwait(false);
+        var response = await ResponseFactory.FromHttpResponseAsync(responseMessage, serviceType).ConfigureAwait(false);
+        return response;
     }
 
     /// <summary>
     /// Polls <c>rmt/getRunningStatus</c> until the command that produced <paramref name="commandResponse"/> actually
-    /// completes on the vehicle, instead of trusting the initial HTTP 200. No-ops (returns success immediately) if
-    /// <paramref name="commandResponse"/> didn't carry a transaction id — e.g. it wasn't a command response, or the
-    /// command failed before a transaction id was issued.
+    /// completes on the vehicle, instead of trusting the initial HTTP 200.
     /// </summary>
     /// <remarks>
+    /// A missing <see cref="Response.TransactionId"/> is itself a failure signal, not a no-op: BlueLink can return
+    /// HTTP 200 with no transaction id when the command was never actually dispatched to the vehicle — observed
+    /// live with a bad <c>bluelinkservicepin</c>, which the command endpoint silently swallows into a transaction-id-less
+    /// 200 rather than an HTTP error. <see cref="ResponseFactory"/> already turns that into a failed <c>commandResponse</c>
+    /// before it ever reaches here, so this check is a defensive backstop (e.g. for a manually-constructed
+    /// <see cref="Response"/>) rather than the primary place this gets caught.
+    ///
     /// Every fire like this triggers the same push notification the official app would send, since it's hitting
     /// the same backend — polling for completion doesn't add extra notifications, but firing the underlying
     /// command does regardless of which client sends it.
@@ -161,7 +167,7 @@ public class Vehicle
     {
         if (commandResponse.TransactionId is null)
         {
-            return Response.Success();
+            return Response.Failure(commandResponse.ResponseCode, "Command was not accepted — no transaction id was returned. This usually means the PIN was wrong.");
         }
 
         var interval = pollInterval ?? TimeSpan.FromSeconds(5);

@@ -444,6 +444,8 @@ userName=<BlueLinkClientConfig.Username>&vin=<VehicleConfig.Vin>
 
 No response body parsed.
 
+**PIN lockout observed live**: submitting a wrong `bluelinkservicepin` doesn't just fail that one request — after a bad attempt, the account reported the PIN was **locked out for 5 minutes** before another attempt would even be considered, and different bad-PIN attempts have returned different-sounding error text (one mentioned "credentials", another explicitly mentioned the PIN lockout) rather than one consistent message or status code. The reliable signal instead turned out to be structural, not textual: HTTP 200 but **no transaction id** in the response — every remote command (this one included) is expected to carry a transaction id on genuine success, so `ResponseFactory` treats a 2xx with no transaction id as a failure; see "Command completion polling" below. The app's PIN-prompt flow (`BlooLynx.Maui.Android`) still treats any failure of a freshly-entered PIN as reason to forget it and re-prompt, but now that a bad PIN actually surfaces as a real failure (instead of being masked as HTTP-200 success), that check actually fires.
+
 ---
 
 ## `Vehicle.FlashLightsAsync()` / `Vehicle.FlashLightsAndHonkAsync()`
@@ -529,7 +531,9 @@ Confirmed real-world trigger for the rate-limit variant: firing two remote comma
 
 ## Command completion polling (`rmt/getRunningStatus`)
 
-Every remote command (`StartClimateAsync`, `StopClimateAsync`, lock/unlock, lights/horn, charge start/stop) returns its transaction id in a response header — checked in this order: `tmsTid`, `transactionId`, `Xid`. HTTP 200 only means the command was *accepted*, not that it completed — actually confirming that requires polling this endpoint.
+Every remote command (`StartClimateAsync`, `StopClimateAsync`, lock/unlock, lights/horn, charge start/stop) returns its transaction id in a response header on genuine success — checked in this order: `tmsTid`, `transactionId`, `Xid`. HTTP 200 only means the command was *accepted*, not that it completed — actually confirming that requires polling this endpoint.
+
+**A 2xx with no transaction id is treated as a failure, not a success**, enforced centrally in `ResponseFactory.FromHttpResponseAsync` (the overload `Vehicle`'s `ExecuteActionAsync` uses for every command above) rather than only where a caller happens to poll. This matters for fire-and-forget commands too — e.g. `FlashLightsAsync`, which nobody polls to confirm the lights actually flashed — not just ones that go on to call `WaitForCommandAsync`. Observed live: a bad `bluelinkservicepin` gets HTTP 200 with no transaction id rather than an HTTP error, so without this check a wrong PIN would look like success for every remote command, not just lock/unlock.
 
 ### `Response.TransactionId` / `Vehicle.WaitForCommandAsync(Response, ...)`
 
@@ -537,7 +541,7 @@ This is now wired up, as an **opt-in** step rather than automatic blocking — e
 
 - `Response` now carries a public `TransactionId` (populated automatically by `ResponseFactory` whenever a command response includes one — `null` for non-command responses like `StatusAsync`/`GetVehiclesAsync`) and an internal `ServiceType` the library uses to know which `service_type` value this particular command needs when polled.
 - `Vehicle.WaitForCommandAsync(Response commandResponse, TimeSpan? pollInterval = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default)`:
-  - No-ops (`Response.Success()`) immediately if `commandResponse.TransactionId` is `null` — nothing to poll.
+  - Also returns `Response.Failure` immediately if `commandResponse.TransactionId` is `null`, as a defensive backstop (e.g. for a manually-constructed `Response`) — in normal use `ResponseFactory` already turns a missing transaction id into a failed `commandResponse` before it gets here, per the note above. (An earlier version of this method treated a missing transaction id as "nothing to poll, already succeeded" — that was wrong and silently masked bad-PIN failures as success.)
   - Otherwise polls `rmt/getRunningStatus` with the correct `service_type` for you, using the server-hinted 5-second `nextPollingInterval` once available (falling back to `pollInterval`, which itself defaults to 5 seconds), until `SUCCESS` (returns `Response.Success`), `ERROR` (returns `Response.Failure`), or `timeout` elapses (default 60 seconds; returns `Response.Failure(408, ...)`).
 
 Usage:
@@ -578,3 +582,4 @@ Response body once resolved:
 ## Known gaps
 
 - EV plug status (`PluggedTo`) and estimated charge durations are now modeled. Charge limits are now settable via `SetChargeLimitsAsync` — fully confirmed live, including the `plugType` direction (checked against the official app's UI). Discovered along the way: AC limits appear to only accept 10% increments and silently round rather than reject (untested whether DC has the same restriction). The full charge-schedule/off-peak-power configuration under `evStatus.reservChargeInfos` is confirmed present live but still not modeled.
+- `ResponseFactory`'s command-response overload (used by every `Vehicle` remote-command method via `ExecuteActionAsync`) previously treated any HTTP 2xx as success regardless of whether a transaction id came back. That was wrong: a missing transaction id is itself the reliable signal that a command (observed with `LockAsync`/`UnlockAsync`) was never actually dispatched — e.g. a bad PIN — and is now treated as a failure for every command, not just ones a caller happens to poll with `WaitForCommandAsync` (which had, and still has as a backstop, the same fix). Exact bad-PIN status code/message text is still inconsistent between attempts (see the PIN lockout note on that section), so don't rely on wording — the transaction-id check is what actually works.

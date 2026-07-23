@@ -47,19 +47,61 @@ else
                 <div class="small text-capitalize">Range</div>
             </div>
         </div>
+
+        <div class="text-center my-3">
+            <button class="btn @(_status.ClosurePanels.Locked ? "btn-success" : "btn-danger") @(_isTogglingLock ? "heartbeat" : "")" type="button" @onclick="ToggleLockAsync" disabled="@_isTogglingLock">
+                @((MarkupString)(_status.ClosurePanels.Locked ? LockFillSvg : UnlockFillSvg))
+            </button>
+        </div>
     }
     else if (_error is not null)
     {
         <p>@_error</p>
     }
+
+    @if (_pinModalOpen)
+    {
+        <div class="modal d-block" tabindex="-1" role="dialog">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Enter PIN</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p>Enter your BlueLink PIN to control the vehicle. It will be saved so you aren't asked again.</p>
+                        <input type="password" inputmode="numeric" class="form-control" @bind="_pinInput" @bind:event="oninput" disabled="@_isTogglingLock" />
+                        @if (_pinError is not null)
+                        {
+                            <p class="text-danger small mt-2 mb-0">@_pinError</p>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CancelPinModal" disabled="@_isTogglingLock">Cancel</button>
+                        <button type="button" class="btn btn-primary @(_isTogglingLock ? "heartbeat" : "")" @onclick="SubmitPinAsync" disabled="@(_isTogglingLock || string.IsNullOrWhiteSpace(_pinInput))">Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-backdrop show"></div>
+    }
 }
 
 @code {
+    private const string LockFillSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 0a4 4 0 0 1 4 4v2.05a2.5 2.5 0 0 1 2 2.45v5a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 2 13.5v-5a2.5 2.5 0 0 1 2-2.45V4a4 4 0 0 1 4-4m0 1a3 3 0 0 0-3 3v2h6V4a3 3 0 0 0-3-3"/></svg>""";
+
+    private const string UnlockFillSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M12 0a4 4 0 0 1 4 4v2.5h-1V4a3 3 0 1 0-6 0v2h.5A2.5 2.5 0 0 1 12 8.5v5A2.5 2.5 0 0 1 9.5 16h-7A2.5 2.5 0 0 1 0 13.5v-5A2.5 2.5 0 0 1 2.5 6H8V4a4 4 0 0 1 4-4"/></svg>""";
+
     private Vehicle? _selectedVehicle;
     private Status? _status;
     private string? _error;
     private bool _isLoading;
     private bool _dropdownOpen;
+    private bool _isTogglingLock;
+    private bool _pinModalOpen;
+    private string _pinInput = string.Empty;
+    private string? _pinError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -89,6 +131,86 @@ else
         _selectedVehicle = vehicle;
         _dropdownOpen = false;
         await RefreshStatusAsync();
+    }
+
+    private async Task ToggleLockAsync()
+    {
+        if (_selectedVehicle is null || _status is null)
+        {
+            return;
+        }
+
+        if (!StateService.HasPin)
+        {
+            _pinInput = string.Empty;
+            _pinError = null;
+            _pinModalOpen = true;
+            return;
+        }
+
+        await PerformLockToggleAsync();
+    }
+
+    private async Task SubmitPinAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_pinInput))
+        {
+            return;
+        }
+
+        StateService.SetPendingPin(_pinInput.Trim());
+        _pinModalOpen = false;
+        await PerformLockToggleAsync();
+    }
+
+    /// <summary>Fires the lock/unlock command and waits for it to actually complete. Any failure at all — whatever
+    /// it says — means the PIN didn't work: it's forgotten (memory + storage) and the modal reopens with that exact
+    /// error text so the user can re-enter it. There's no reliable way to tell a bad-PIN failure apart from any
+    /// other kind, so this doesn't try to guess; a network blip means an unnecessary re-prompt, which is a fine
+    /// trade for never silently keeping a broken PIN around. On success, just flips <see cref="_status"/>'s lock
+    /// flag locally rather than re-fetching the whole status (SOC/range haven't changed).</summary>
+    private async Task PerformLockToggleAsync()
+    {
+        if (_selectedVehicle is null || _status is null)
+        {
+            return;
+        }
+
+        _isTogglingLock = true;
+        _pinError = null;
+        StateHasChanged();
+
+        try
+        {
+            var wasLocked = _status.ClosurePanels.Locked;
+            var commandResult = await StateService.ToggleVehicleLockAsync(_selectedVehicle, wasLocked);
+            if (commandResult.IsSuccessful)
+            {
+                await StateService.ConfirmPinAsync();
+                _status.ClosurePanels.Locked = !wasLocked;
+                _pinModalOpen = false;
+                _pinInput = string.Empty;
+            }
+            else
+            {
+                await StateService.ForgetPinAsync();
+                _pinError = commandResult.ErrorMessage;
+                _pinInput = string.Empty;
+                _pinModalOpen = true;
+            }
+        }
+        finally
+        {
+            _isTogglingLock = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelPinModal()
+    {
+        _pinModalOpen = false;
+        _pinInput = string.Empty;
+        _pinError = null;
     }
 
     private async Task RefreshStatusAsync()
