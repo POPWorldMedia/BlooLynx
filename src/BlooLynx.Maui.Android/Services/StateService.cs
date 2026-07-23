@@ -51,6 +51,17 @@ public class StateService(IHttpClientFactory httpClientFactory)
 
     public bool HasPin => !string.IsNullOrEmpty(_config?.Pin);
 
+    /// <summary>The vehicle currently selected on the home page, if any. Shared here (rather than kept as
+    /// component-local state) so a page navigated to from Home — e.g. the climate page — knows which vehicle
+    /// it's acting on without needing it passed through a route parameter.</summary>
+    public Vehicle? SelectedVehicle { get; set; }
+
+    /// <summary>The last status fetched for <see cref="SelectedVehicle"/>. <see cref="Status"/> and its nested
+    /// types are mutable classes, so pages that hold this same reference can update it in place after a
+    /// command succeeds (e.g. flipping <c>Climate.Active</c> after starting climate) without forcing a full
+    /// network re-fetch — as long as they mutate the cached instance rather than replacing it.</summary>
+    public Status? CachedStatus { get; set; }
+
     /// <summary>
     /// Loads config from secure storage and, if present, validates the stored session against the API. Safe to call
     /// once at app startup.
@@ -216,6 +227,45 @@ public class StateService(IHttpClientFactory httpClientFactory)
         }
     }
 
+    /// <summary>Starts climate on <paramref name="vehicle"/> with the given <paramref name="options"/>, waiting
+    /// for the command to actually complete on the vehicle (via <see cref="Vehicle.WaitForCommandAsync"/>)
+    /// rather than trusting the initial HTTP 200.</summary>
+    public async Task<Response> StartVehicleClimateAsync(Vehicle vehicle, StartOptions options)
+    {
+        try
+        {
+            var commandResult = await vehicle.StartClimateAsync(options);
+            return commandResult.IsSuccessful ? await vehicle.WaitForCommandAsync(commandResult) : commandResult;
+        }
+        catch (HttpRequestException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+    }
+
+    /// <summary>Stops climate on <paramref name="vehicle"/>, waiting for the command to actually complete on the
+    /// vehicle (via <see cref="Vehicle.WaitForCommandAsync"/>) rather than trusting the initial HTTP 200.</summary>
+    public async Task<Response> StopVehicleClimateAsync(Vehicle vehicle)
+    {
+        try
+        {
+            var commandResult = await vehicle.StopClimateAsync();
+            return commandResult.IsSuccessful ? await vehicle.WaitForCommandAsync(commandResult) : commandResult;
+        }
+        catch (HttpRequestException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            return Response.Failure(0, "Could not reach the BlueLink API.");
+        }
+    }
+
     private async Task<Response<IReadOnlyList<Vehicle>>> FetchVehiclesAsync()
     {
         try
@@ -257,6 +307,8 @@ public class StateService(IHttpClientFactory httpClientFactory)
         _config = null;
         _client = null;
         Vehicles = [];
+        SelectedVehicle = null;
+        CachedStatus = null;
         IsAuthenticated = false;
 
         StateChanged?.Invoke();

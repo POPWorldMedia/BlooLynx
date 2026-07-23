@@ -22,4 +22,13 @@ public class VehicleConfig
 
     /// <summary>The odometer reading captured at enrollment time, if the account's enrollment list included one.</summary>
     public double? Odometer { get; set; }
+
+    /// <summary>Minimum settable HVAC temperature (°F) for this vehicle, from
+    /// <c>additionalVehicleDetails.midTemp</c> in the enrollment response — "mid" despite being the low end of
+    /// the range is the API's own naming, not a typo here.</summary>
+    public int? MinTemperature { get; set; }
+
+    /// <summary>Maximum settable HVAC temperature (°F) for this vehicle, from
+    /// <c>additionalVehicleDetails.maxTemp</c> in the enrollment response.</summary>
+    public int? MaxTemperature { get; set; }
 }

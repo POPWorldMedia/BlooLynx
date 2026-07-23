@@ -9,6 +9,7 @@ internal static class ApiPaths
     public static string FindMyCar => "/ac/v2/rcs/rfc/findMyCar";
     public static string ClimateStartEv => "/ac/v2/evc/fatc/start";
     public static string ClimateStart => "/ac/v2/rcs/rsc/start";
+    public static string ClimateStopEv => "/ac/v2/evc/fatc/stop";
     public static string ClimateStop => "/ac/v2/rcs/rsc/stop";
     public static string RunningStatus => "/ac/v2/rmt/getRunningStatus";
     public static string VehicleStatus => "/ac/v2/rcs/rvs/vehicleStatus";

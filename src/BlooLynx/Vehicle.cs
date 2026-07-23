@@ -113,8 +113,11 @@ public class Vehicle
         if (settings.RearRightSeat is { } rr) yield return ("rearRightSeat", rr);
     }
 
-    public Task<Response> StopClimateAsync(CancellationToken cancellationToken = default) =>
-        ExecuteActionAsync(HttpMethod.Post, ApiPaths.ClimateStop, null, cancellationToken);
+    public Task<Response> StopClimateAsync(CancellationToken cancellationToken = default)
+    {
+        var stopUrl = VehicleConfig.IsEV ? ApiPaths.ClimateStopEv : ApiPaths.ClimateStop;
+        return ExecuteActionAsync(HttpMethod.Post, stopUrl, null, cancellationToken);
+    }
 
     /// <summary>Sends a control-endpoint request and returns its outcome, tagged with the service_type
     /// <see cref="WaitForCommandAsync"/> needs to poll for this specific command's completion.</summary>
@@ -247,16 +250,29 @@ public class Vehicle
                 SteeringWheelHeat = GetInt(raw, "steerWheelHeat") != 0,
                 RearWindowHeat = GetInt(raw, "sideBackWindowHeat") != 0,
                 Defrost = GetBool(raw, "defrost"),
-                TemperatureSetpoint = raw.TryGetProperty("airTemp", out var airTemp) && airTemp.TryGetProperty("value", out var tv)
-                    ? tv.GetString()
-                    : null,
-                TemperatureUnit = raw.TryGetProperty("airTemp", out var airTemp2) && airTemp2.TryGetProperty("unit", out var tu)
-                    ? (TemperatureUnit)tu.GetInt32()
-                    : TemperatureUnit.Celsius,
+                Temperature = ParseClimateTemperature(raw),
             },
             DriveTrain = ParseDriveTrain(raw),
             LastUpdate = ParseLastUpdate(raw),
         };
+    }
+
+    private static ClimateTemperature ParseClimateTemperature(JsonElement raw)
+    {
+        if (!raw.TryGetProperty("airTemp", out var airTemp))
+        {
+            return new ClimateTemperature(isOn: false, temperature: 0, TemperatureUnit.Celsius);
+        }
+
+        var unit = airTemp.TryGetProperty("unit", out var u) ? (TemperatureUnit)u.GetInt32() : TemperatureUnit.Celsius;
+        var valueText = airTemp.TryGetProperty("value", out var v) ? v.GetString() : null;
+
+        if (valueText is null || valueText == "OFF" || !double.TryParse(valueText, out var temperature))
+        {
+            return new ClimateTemperature(isOn: false, temperature: 0, unit);
+        }
+
+        return new ClimateTemperature(isOn: true, temperature, unit);
     }
 
     private static DateTime? ParseLastUpdate(JsonElement raw)

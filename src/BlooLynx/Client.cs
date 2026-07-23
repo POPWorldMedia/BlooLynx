@@ -277,6 +277,7 @@ public class Client(
         foreach (var item in enrolled.EnumerateArray())
         {
             var details = item.GetProperty("vehicleDetails");
+            var (minTemperature, maxTemperature) = ParseTemperatureRange(item);
             var config = new VehicleConfig
             {
                 Nickname = details.GetProperty("nickName").GetString() ?? string.Empty,
@@ -291,6 +292,8 @@ public class Client(
                 Trim = details.TryGetProperty("trim", out var trim) ? trim.GetString() ?? string.Empty : string.Empty,
                 IsEV = details.TryGetProperty("evStatus", out var evStatus) && evStatus.GetString() == "E",
                 Odometer = details.TryGetProperty("odometer", out var odometer) ? odometer.GetDouble() : (double?)null,
+                MinTemperature = minTemperature,
+                MaxTemperature = maxTemperature,
             };
 
             var vehicle = new Vehicle(config, this);
@@ -298,6 +301,20 @@ public class Client(
         }
 
         return vehicles;
+    }
+
+    /// <summary>Reads the vehicle's settable HVAC temperature range from <c>additionalVehicleDetails</c>, a
+    /// sibling of <c>vehicleDetails</c> within the same enrolled-vehicle entry.</summary>
+    private static (int? MinTemperature, int? MaxTemperature) ParseTemperatureRange(JsonElement item)
+    {
+        if (!item.TryGetProperty("additionalVehicleDetails", out var additionalDetails))
+        {
+            return (null, null);
+        }
+
+        var minTemperature = additionalDetails.TryGetProperty("midTemp", out var midTemp) ? midTemp.GetInt32() : (int?)null;
+        var maxTemperature = additionalDetails.TryGetProperty("maxTemp", out var maxTemp) ? maxTemp.GetInt32() : (int?)null;
+        return (minTemperature, maxTemperature);
     }
 
     private class TokenResponse

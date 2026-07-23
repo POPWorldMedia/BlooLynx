@@ -148,6 +148,10 @@ Response body (only fields read, per enrolled vehicle):
         "modelCode": "string",
         "trim": "string",
         "evStatus": "N | E"
+      },
+      "additionalVehicleDetails": {
+        "midTemp": "<int>",
+        "maxTemp": "<int>"
       }
     }
   ]
@@ -158,6 +162,8 @@ Response body (only fields read, per enrolled vehicle):
 **Verified live**: all fields above, including `modelYear`, `modelCode`, and `trim`, are present with the expected types. Worth noting as a naming trap: `evStatus` means something completely different on `StatusAsync`'s endpoint, where it's a large nested object (see below) — same JSON key, unrelated shape, depending which endpoint you're looking at.
 
 `odometer` from the same response is captured as `VehicleConfig.Odometer` — there is no separate method for it, since it's just this same enrollment-list response re-read.
+
+`additionalVehicleDetails.midTemp`/`maxTemp` (a sibling of `vehicleDetails`, not nested inside it) map to `VehicleConfig.MinTemperature`/`MaxTemperature` — the vehicle's own settable HVAC temperature range, used to bound the slider on the climate page. Despite the name, `midTemp` is the *low* end of the range, not a midpoint — that's the API's own naming, confirmed against a live capture; neither `bluelinky` nor `hyundai_kia_connect_api` reads this field themselves (the latter hardcodes a `62–82`°F range instead), so there's no independent corroboration of the field beyond the live capture itself.
 
 ---
 
@@ -223,7 +229,7 @@ No response body is parsed — success/failure comes from the HTTP status code o
 
 Turns off whatever `StartClimateAsync` turned on (HVAC/defrost/seat heat/etc.).
 
-`POST /ac/v2/rcs/rsc/stop`
+`POST /ac/v2/evc/fatc/stop` (EV) or `POST /ac/v2/rcs/rsc/stop` (non-EV) — same EV/non-EV branch as `StartClimateAsync`, confirmed against `HyundaiBlueLinkApiUSA.py`'s `stop_climate`. An earlier version of this method always posted to the non-EV path regardless of `VehicleConfig.IsEV`, which surfaced live on an EV as a `"vehicle does not support this feature"` error from the API.
 
 Headers: common headers. No request body. No response body parsed.
 
@@ -274,7 +280,7 @@ Response body (`vehicleStatus` object; only fields actually read are shown — t
 ```
 Maps to `Status { ClosurePanels, Climate, DriveTrain, LastUpdate }`:
 - `ClosurePanels`: `HoodOpen`, `TrunkOpen`, `Locked` (from `doorLock`), `OpenDoors`.
-- `Climate`: `Active` (from `airCtrlOn`), `SteeringWheelHeat`, `RearWindowHeat` (from `sideBackWindowHeat`), `Defrost`, `TemperatureSetpoint`/`TemperatureUnit` (from `airTemp`; `TemperatureUnit` is an enum, `Celsius = 0`/`Fahrenheit = 1`, confirmed via the same `hyundai_kia_connect_api` source — which notably doesn't bother reading this field itself for the US region, since that API appears to always operate in Fahrenheit regardless).
+- `Climate`: `Active` (from `airCtrlOn`), `SteeringWheelHeat`, `RearWindowHeat` (from `sideBackWindowHeat`), `Defrost`, `Temperature` (from `airTemp`, as a `ClimateTemperature { IsOn, Temperature, Unit }` struct — `airTemp.value` is the sentinel string `"OFF"` instead of a number when the setpoint isn't active, per `hyundai_kia_connect_api`'s own parsing (`ApiImplType1.py`: `if air_temp not in (None, "OFF")`), which this collapses into `IsOn = false`/`Temperature = 0` rather than leaving callers to string-compare the raw value; `Unit` is an enum, `Celsius = 0`/`Fahrenheit = 1`, confirmed via the same source — which notably doesn't bother reading this field itself for the US region, since that API appears to always operate in Fahrenheit regardless).
 - `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `DriveTrainStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed), `TirePressureWarningLamp`.
 - `LastUpdate` from `dateTime`, parsed as `DateTime?` (`null` if missing/unparsable).
 
@@ -344,7 +350,7 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     "doorLock": "<bool>",                                   // (mapped) -> ClosurePanels.Locked
     "odometer": "<int>",
     "airCtrlOn": "<bool>",                                  // (mapped) -> Climate.Active
-    "airTemp": { "unit": "<int>", "value": "<string>", "hvacTempType": "<int>" }, // (mapped, minus hvacTempType) -> Climate.TemperatureUnit/TemperatureSetpoint
+    "airTemp": { "unit": "<int>", "value": "<string>", "hvacTempType": "<int>" }, // (mapped, minus hvacTempType) -> Climate.Temperature
     "evStatus": {
       "batteryCharge": "<bool>",                            // (mapped) -> DriveTrain.Charging
       "batteryStatus": "<int>",                             // (mapped) -> DriveTrain.StateOfCharge

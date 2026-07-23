@@ -1,0 +1,186 @@
+@page "/climate"
+@using BlooLynx
+@using BlooLynx.Models
+@inject StateService StateService
+@inject NavigationManager Navigation
+
+<div class="d-flex align-items-center my-3">
+    <button class="btn p-0 border-0 bg-transparent" type="button" @onclick="GoBack" aria-label="Back">
+        @((MarkupString)ArrowLeftSvg)
+    </button>
+</div>
+
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh;">
+    <h1 class="mb-3">@_selectedTemperature&deg;F</h1>
+
+    <input type="range" class="form-range w-75" min="@_minTemperature" max="@_maxTemperature" @bind="_selectedTemperature" @bind:event="oninput" disabled="@_isPerformingAction" />
+
+    <button class="btn btn-primary mt-4 @(_isPerformingAction ? "heartbeat" : "")" type="button" @onclick="SetTemperatureAsync" disabled="@_isPerformingAction">
+        Set temperature
+    </button>
+
+    @if (_actionError is not null)
+    {
+        <p class="text-danger small text-center mt-3">@_actionError</p>
+    }
+</div>
+
+@if (_pinModalOpen)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Enter PIN</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Enter your BlueLink PIN to control the vehicle. It will be saved so you aren't asked again.</p>
+                    <input type="password" inputmode="numeric" class="form-control" @bind="_pinInput" @bind:event="oninput" disabled="@_isPerformingAction" />
+                    @if (_pinError is not null)
+                    {
+                        <p class="text-danger small mt-2 mb-0">@_pinError</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelPinModal" disabled="@_isPerformingAction">Cancel</button>
+                    <button type="button" class="btn btn-primary @(_isPerformingAction ? "heartbeat" : "")" @onclick="SubmitPinAsync" disabled="@(_isPerformingAction || string.IsNullOrWhiteSpace(_pinInput))">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    private const string ArrowLeftSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M15 8a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 7.5H14.5a.5.5 0 0 1 .5.5"/></svg>""";
+
+    /// <summary>Fallback range if <see cref="VehicleConfig.MinTemperature"/>/<see cref="VehicleConfig.MaxTemperature"/>
+    /// weren't present in the enrollment response — matches <c>HyundaiBlueLinkApiUSA.py</c>'s own hardcoded
+    /// 62–82°F range, used there for the same purpose (bounding a settable HVAC temperature).</summary>
+    private const int DefaultMinTemperature = 62;
+    private const int DefaultMaxTemperature = 82;
+
+    private int _minTemperature = DefaultMinTemperature;
+    private int _maxTemperature = DefaultMaxTemperature;
+    private int _selectedTemperature;
+    private bool _isPerformingAction;
+    private bool _pinModalOpen;
+    private string _pinInput = string.Empty;
+    private string? _pinError;
+    private string? _actionError;
+
+    protected override void OnInitialized()
+    {
+        if (StateService.SelectedVehicle is null)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        var vehicleConfig = StateService.SelectedVehicle.VehicleConfig;
+        _minTemperature = vehicleConfig.MinTemperature ?? DefaultMinTemperature;
+        _maxTemperature = vehicleConfig.MaxTemperature ?? DefaultMaxTemperature;
+
+        var currentTemperature = StateService.CachedStatus?.Climate.Temperature;
+        _selectedTemperature = currentTemperature is { IsOn: true } temperature
+            ? (int)temperature.Temperature
+            : (_minTemperature + _maxTemperature) / 2;
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void OpenPinModal()
+    {
+        _pinInput = string.Empty;
+        _pinError = null;
+        _pinModalOpen = true;
+    }
+
+    private async Task SetTemperatureAsync()
+    {
+        if (!StateService.HasPin)
+        {
+            OpenPinModal();
+            return;
+        }
+
+        await PerformSetTemperatureAsync(pinAlreadyConfirmed: true);
+    }
+
+    private async Task SubmitPinAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_pinInput))
+        {
+            return;
+        }
+
+        StateService.SetPendingPin(_pinInput.Trim());
+        _pinModalOpen = false;
+        await PerformSetTemperatureAsync(pinAlreadyConfirmed: false);
+    }
+
+    private void CancelPinModal()
+    {
+        _pinModalOpen = false;
+        _pinInput = string.Empty;
+        _pinError = null;
+    }
+
+    /// <summary>Fires the climate-start command at <see cref="_selectedTemperature"/> and waits for it to
+    /// actually complete. Mirrors Home's lock/charge PIN handling exactly: a failure with an already-proven PIN
+    /// shows an inline <see cref="_actionError"/> and leaves the PIN alone; a failure with a freshly-typed,
+    /// unconfirmed PIN forgets it and reprompts. On success, updates <see cref="StateService.CachedStatus"/>'s
+    /// climate fields in place — no full status re-fetch — before returning to Home, so the fan button and
+    /// climate row there reflect the new state immediately.</summary>
+    private async Task PerformSetTemperatureAsync(bool pinAlreadyConfirmed)
+    {
+        if (StateService.SelectedVehicle is null)
+        {
+            return;
+        }
+
+        _isPerformingAction = true;
+        _pinError = null;
+        _actionError = null;
+        StateHasChanged();
+
+        try
+        {
+            var options = new StartOptions { Hvac = true, Temperature = _selectedTemperature };
+            var commandResult = await StateService.StartVehicleClimateAsync(StateService.SelectedVehicle, options);
+            if (commandResult.IsSuccessful)
+            {
+                await StateService.ConfirmPinAsync();
+
+                var status = StateService.CachedStatus;
+                if (status is not null)
+                {
+                    status.Climate.Active = true;
+                    status.Climate.Temperature = new ClimateTemperature(isOn: true, _selectedTemperature, TemperatureUnit.Fahrenheit);
+                }
+
+                Navigation.NavigateTo("/");
+            }
+            else if (pinAlreadyConfirmed)
+            {
+                _actionError = commandResult.ErrorMessage;
+            }
+            else
+            {
+                await StateService.ForgetPinAsync();
+                _pinError = commandResult.ErrorMessage;
+                _pinInput = string.Empty;
+                _pinModalOpen = true;
+            }
+        }
+        finally
+        {
+            _isPerformingAction = false;
+            StateHasChanged();
+        }
+    }
+}
