@@ -10,8 +10,13 @@
     private const string ArrowLeftSvg =
         """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M15 8a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 7.5H14.5a.5.5 0 0 1 .5.5"/></svg>""";
 
+    /// <summary>Uses <c>replace</c> rather than a normal push so this doesn't leave an extra "/" entry sitting
+    /// behind the current one in the WebView's JS history — that would otherwise let a subsequent Android
+    /// hardware back press (which falls through to the native WebView's own back-history handling once we're
+    /// back on Home) land on the sub-page again instead of actually exiting the app. See
+    /// <c>MainPage.OnBackButtonPressed</c> for the other half of this.</summary>
     private void GoBack()
     {
-        Navigation.NavigateTo("/");
+        Navigation.NavigateTo("/", replace: true);
     }
 }

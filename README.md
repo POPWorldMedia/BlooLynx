@@ -15,10 +15,11 @@ Check out the `apireference.md` in the `docs` folder. The Android app will be po
 * ✅Climate start/stop with temperature setting
 * Charge start/stop (EV's)
 * Set charge limits (EV's)
+* Potentially show remaining charge time (EV's)
+* ✅Tire pressure
 * Flash lights
 * Flash lights and honk
 * Location (hand off to maps?)
 * ✅Display odometer and VIN
 * ✅Display year/make/model
 * ✅Dark mode
-* Potentially show remaining charge time (EV's)
