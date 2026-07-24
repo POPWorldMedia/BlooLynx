@@ -281,12 +281,12 @@ Response body (`vehicleStatus` object; only fields actually read are shown — t
 Maps to `Status { ClosurePanels, Climate, DriveTrain, LastUpdate }`:
 - `ClosurePanels`: `HoodOpen`, `TrunkOpen`, `Locked` (from `doorLock`), `OpenDoors`.
 - `Climate`: `Active` (from `airCtrlOn`), `SteeringWheelHeat`, `RearWindowHeat` (from `sideBackWindowHeat`), `Defrost`, `Temperature` (from `airTemp`, as a `ClimateTemperature { IsOn, Temperature, Unit }` struct — `airTemp.value` is the sentinel string `"OFF"` instead of a number when the setpoint isn't active, per `hyundai_kia_connect_api`'s own parsing (`ApiImplType1.py`: `if air_temp not in (None, "OFF")`), which this collapses into `IsOn = false`/`Temperature = 0` rather than leaving callers to string-compare the raw value; `Unit` is an enum, `Celsius = 0`/`Fahrenheit = 1`, confirmed via the same source — which notably doesn't bother reading this field itself for the US region, since that API appears to always operate in Fahrenheit regardless).
-- `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `DriveTrainStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed), `TirePressureWarningLamp`.
+- `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `DriveTrainStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed), `TirePressureWarningLamp`, `TirePressure` (from `tirePressure.tirePressure{FrontLeft,FrontRight,RearLeft,RearRight}`, in PSI — the `datetime{FrontLeft,...}` timestamps in the same node aren't read).
 - `LastUpdate` from `dateTime`, parsed as `DateTime?` (`null` if missing/unparsable).
 
 **Verified live**: every field this library reads was confirmed present with the expected type, including the newly-added `batteryPlugin` and `remainTime2.{atc,etc1,etc2,etc3}`.
 
-**Also observed live but still unmapped** (real, populated fields seen in a live response that this library doesn't currently read — see the full contract below for the complete list): a second GPS location at `vehicleStatus.vehicleLocation.coord` (redundant with `findMyCar`), real per-tire PSI values under `tirePressure`, `windowOpen` state, a live (current, not just settable) `seatHeaterVentInfo`, and several EV fields (`v2G`, `wirelessCharging`, `chargePortDoorOpen`, `dischargingLimit`, a populated `reservChargeInfos.targetSOClist`, and a real charge-schedule/off-peak-power configuration).
+**Also observed live but still unmapped** (real, populated fields seen in a live response that this library doesn't currently read — see the full contract below for the complete list): a second GPS location at `vehicleStatus.vehicleLocation.coord` (redundant with `findMyCar`), the per-tire `datetime{FrontLeft,...}` timestamps alongside `tirePressure` (the PSI values themselves are now mapped, see above), `windowOpen` state, a live (current, not just settable) `seatHeaterVentInfo`, and several EV fields (`v2G`, `wirelessCharging`, `chargePortDoorOpen`, `dischargingLimit`, a populated `reservChargeInfos.targetSOClist`, and a real charge-schedule/off-peak-power configuration).
 
 ### Full response contract (as observed live)
 
@@ -303,10 +303,10 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     "defrostStatus": "<string \"true\"|\"false\">",        // string duplicate of defrost below
     "transCond": "<bool>",
     "tirePressure": {
-      "tirePressureFrontLeft": "<int, PSI>",
-      "tirePressureFrontRight": "<int, PSI>",
-      "tirePressureRearLeft": "<int, PSI>",
-      "tirePressureRearRight": "<int, PSI>",
+      "tirePressureFrontLeft": "<int, PSI>",                 // (mapped) -> DriveTrain.TirePressure.FrontLeft
+      "tirePressureFrontRight": "<int, PSI>",                // (mapped) -> DriveTrain.TirePressure.FrontRight
+      "tirePressureRearLeft": "<int, PSI>",                  // (mapped) -> DriveTrain.TirePressure.RearLeft
+      "tirePressureRearRight": "<int, PSI>",                 // (mapped) -> DriveTrain.TirePressure.RearRight
       "datetimeFrontLeft": "<string, ISO 8601>",
       "datetimeFrontRight": "<string, ISO 8601>",
       "datetimeRearLeft": "<string, ISO 8601>",

@@ -4,11 +4,7 @@
 @inject StateService StateService
 @inject NavigationManager Navigation
 
-<div class="d-flex align-items-center my-3">
-    <button class="btn p-0 border-0 bg-transparent" type="button" @onclick="GoBack" aria-label="Back">
-        @((MarkupString)ArrowLeftSvg)
-    </button>
-</div>
+<BackButton />
 
 <div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh;">
     <h1 class="mb-3">@_selectedTemperature&deg;F</h1>
@@ -52,9 +48,6 @@
 }
 
 @code {
-    private const string ArrowLeftSvg =
-        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M15 8a.5.5 0 0 1-.5.5H2.707l3.147 3.146a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 7.5H14.5a.5.5 0 0 1 .5.5"/></svg>""";
-
     /// <summary>Fallback range if <see cref="VehicleConfig.MinTemperature"/>/<see cref="VehicleConfig.MaxTemperature"/>
     /// weren't present in the enrollment response — matches <c>HyundaiBlueLinkApiUSA.py</c>'s own hardcoded
     /// 62–82°F range, used there for the same purpose (bounding a settable HVAC temperature).</summary>
@@ -86,11 +79,6 @@
         _selectedTemperature = currentTemperature is { IsOn: true } temperature
             ? (int)temperature.Temperature
             : (_minTemperature + _maxTemperature) / 2;
-    }
-
-    private void GoBack()
-    {
-        Navigation.NavigateTo("/");
     }
 
     private void OpenPinModal()

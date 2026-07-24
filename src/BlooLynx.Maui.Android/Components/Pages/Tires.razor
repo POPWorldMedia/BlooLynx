@@ -1,0 +1,55 @@
+@page "/Tires"
+@using BlooLynx.Models
+@inject StateService StateService
+
+<BackButton />
+
+@* Outer div restores page-level vertical centering. Inner div is sized to match CarSvg's own width/height
+   exactly; each label's "left" % is horizontally centered on that wheel's rect center in CarSvg's viewBox
+   (e.g. front wheels are rect x=45/237,w=18 in a 300-wide viewBox — center x ≈ 18%/82%), but sits fully above
+   or below the image itself (top:0/top:100% + a full-height transform) rather than in the narrow gap between
+   the image edge and the wheel, which isn't tall enough for an h1 without overlapping. Each label also gets an
+   explicit fixed width: an absolutely-positioned element with only "left" set (no width/right) has its
+   shrink-to-fit width capped at (container width − left), which for the right-side labels left almost no room
+   and forced "psi" onto its own line — a fixed width sidesteps that entirely. *@
+<div class="d-flex justify-content-center align-items-center my-4" style="min-height: 60vh;">
+    <div class="position-relative" style="width: 200px; height: 253px;">
+        @((MarkupString)CarSvg)
+
+        <div class="position-absolute text-center text-nowrap" style="top: 0; left: 18%; width: 100px; transform: translate(-50%, -100%);">
+            <h1 class="mb-0 @(FrontLeftHasWarning ? "text-danger" : "")">@FrontLeftPressureText psi</h1>
+        </div>
+        <div class="position-absolute text-center text-nowrap" style="top: 0; left: 82%; width: 100px; transform: translate(-50%, -100%);">
+            <h1 class="mb-0 @(FrontRightHasWarning ? "text-danger" : "")">@FrontRightPressureText psi</h1>
+        </div>
+        <div class="position-absolute text-center text-nowrap" style="top: 100%; left: 18%; width: 100px; transform: translate(-50%, 0);">
+            <h1 class="mb-0 @(RearLeftHasWarning ? "text-danger" : "")">@RearLeftPressureText psi</h1>
+        </div>
+        <div class="position-absolute text-center text-nowrap" style="top: 100%; left: 82%; width: 100px; transform: translate(-50%, 0);">
+            <h1 class="mb-0 @(RearRightHasWarning ? "text-danger" : "")">@RearRightPressureText psi</h1>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>fill="none"/stroke="currentColor" means the outline always matches the ambient text color, so
+    /// it stays legible in both light and dark mode without a hardcoded color. Explicit width/height (matching
+    /// the viewBox's 300:380 aspect ratio) are required here — an inline SVG with no size attributes falls back
+    /// to the browser's default intrinsic size (300×150), which would otherwise squash this shape.</summary>
+    private const string CarSvg = "<svg width=\"200\" height=\"253\" viewBox=\"0 0 300 380\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linejoin=\"round\" stroke-linecap=\"round\">\n  <path d=\"M 90 20 L 210 20 C 225 20 232 35 232 65 L 232 315 C 232 355 225 360 210 360 L 90 360 C 75 360 68 355 68 315 L 68 65 C 68 35 75 20 90 20 Z\" />\n  <path d=\"M 95 100 C 100 78 115 65 150 65 C 185 65 200 78 205 100 L 200 130 L 100 130 Z\" />\n  <path d=\"M 100 250 L 200 250 L 197 282 C 190 300 178 308 150 308 C 122 308 110 300 103 282 Z\" />\n  <rect x=\"100\" y=\"135\" width=\"100\" height=\"110\" rx=\"10\" />\n  <path d=\"M 66 130 L 50 135 L 50 150 L 66 150\" />\n  <path d=\"M 234 130 L 250 135 L 250 150 L 234 150\" />\n  <rect x=\"45\" y=\"55\" width=\"18\" height=\"55\" rx=\"6\" />\n  <rect x=\"237\" y=\"55\" width=\"18\" height=\"55\" rx=\"6\" />\n  <rect x=\"45\" y=\"270\" width=\"18\" height=\"55\" rx=\"6\" />\n  <rect x=\"237\" y=\"270\" width=\"18\" height=\"55\" rx=\"6\" />\n</svg>";
+
+    private TirePressure? TirePressure => StateService.CachedStatus?.DriveTrain.TirePressure;
+    private TirePressureWarningLamp? WarningLamp => StateService.CachedStatus?.DriveTrain.TirePressureWarningLamp;
+
+    private string FrontLeftPressureText => FormatPressure(TirePressure?.FrontLeft);
+    private string FrontRightPressureText => FormatPressure(TirePressure?.FrontRight);
+    private string RearLeftPressureText => FormatPressure(TirePressure?.RearLeft);
+    private string RearRightPressureText => FormatPressure(TirePressure?.RearRight);
+
+    private bool FrontLeftHasWarning => WarningLamp is { } lamp && (lamp.FrontLeft || lamp.All);
+    private bool FrontRightHasWarning => WarningLamp is { } lamp && (lamp.FrontRight || lamp.All);
+    private bool RearLeftHasWarning => WarningLamp is { } lamp && (lamp.RearLeft || lamp.All);
+    private bool RearRightHasWarning => WarningLamp is { } lamp && (lamp.RearRight || lamp.All);
+
+    private static string FormatPressure(int? psi) => psi is null ? "—" : $"{psi}";
+}

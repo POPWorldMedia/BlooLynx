@@ -83,11 +83,12 @@ else
         }
         
         <ul class="list-group list-group-flush">
-            <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" role="button" @onclick="GoToClimate">
+            <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                 <div>
                     <h2>Climate</h2>
                     <div>@ClimateStatusText</div>
                 </div>
+                <a href="/climate" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
             <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -95,6 +96,14 @@ else
                     <h2>Charging</h2>
                     <div>[status]</div>
                 </div>
+                @((MarkupString)ChevronRightSvg)
+            </li>
+            <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                <div>
+                    <h2>Tires</h2>
+                    <div class="@(HasTirePressureProblem ? "text-danger" : "")">@TireStatusText</div>
+                </div>
+                <a href="/Tires" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
         </ul>
@@ -201,6 +210,22 @@ else
         }
     }
 
+    private bool HasTirePressureProblem
+    {
+        get
+        {
+            if (_status is null)
+            {
+                return false;
+            }
+
+            var lamp = _status.DriveTrain.TirePressureWarningLamp;
+            return lamp.FrontLeft || lamp.FrontRight || lamp.RearLeft || lamp.RearRight || lamp.All;
+        }
+    }
+
+    private string TireStatusText => HasTirePressureProblem ? "Low pressure" : "Normal";
+
     protected override async Task OnInitializedAsync()
     {
         StateService.Resumed += HandleResumed;
@@ -277,11 +302,6 @@ else
         }
 
         await PerformChargeToggleAsync(pinAlreadyConfirmed: true);
-    }
-
-    private void GoToClimate()
-    {
-        Navigation.NavigateTo("/climate");
     }
 
     /// <summary>Tapping the fan button while climate is running stops it directly (same PIN-gated convention as

@@ -18,6 +18,7 @@ public class DriveTrainStatus
     public bool Accessory { get; set; }
     public EvPlugType? PluggedTo { get; set; }
     public TirePressureWarningLamp TirePressureWarningLamp { get; set; } = new();
+    public TirePressure TirePressure { get; set; } = new();
 
     /// <summary>
     /// Estimated minutes remaining for each charge method, from <c>evStatus.remainTime2</c>. The

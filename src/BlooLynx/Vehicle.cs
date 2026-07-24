@@ -308,6 +308,7 @@ public class Vehicle
             EstimatedPortableChargeDuration = GetRemainTimeMinutes(raw, "etc2"),
             EstimatedStationChargeDuration = GetRemainTimeMinutes(raw, "etc3"),
             TirePressureWarningLamp = ParseTirePressureLamp(raw),
+            TirePressure = ParseTirePressure(raw),
         };
     }
 
@@ -374,6 +375,22 @@ public class Vehicle
             FrontLeft = GetInt(d, "frontLeft") != 0,
             BackLeft = GetInt(d, "backLeft") != 0,
             BackRight = GetInt(d, "backRight") != 0,
+        };
+    }
+
+    private static TirePressure ParseTirePressure(JsonElement raw)
+    {
+        if (!raw.TryGetProperty("tirePressure", out var t))
+        {
+            return new TirePressure();
+        }
+
+        return new TirePressure
+        {
+            FrontLeft = t.TryGetProperty("tirePressureFrontLeft", out var fl) ? fl.GetInt32() : (int?)null,
+            FrontRight = t.TryGetProperty("tirePressureFrontRight", out var fr) ? fr.GetInt32() : (int?)null,
+            RearLeft = t.TryGetProperty("tirePressureRearLeft", out var rl) ? rl.GetInt32() : (int?)null,
+            RearRight = t.TryGetProperty("tirePressureRearRight", out var rr) ? rr.GetInt32() : (int?)null,
         };
     }
 
