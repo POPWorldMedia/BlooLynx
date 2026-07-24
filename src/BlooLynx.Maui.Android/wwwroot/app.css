@@ -1,5 +1,40 @@
+/* Roboto, from Google Fonts (fonts.google.com/specimen/Roboto), bundled locally under wwwroot/fonts/roboto so
+   the app doesn't depend on network access to fonts.gstatic.com at runtime. Latin/Latin-Extended glyphs only —
+   this app's UI text doesn't need Cyrillic/Greek/etc., and the full character-set files are considerably larger. */
+@font-face {
+    font-family: 'Roboto';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('fonts/roboto/Roboto-Regular.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Roboto';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('fonts/roboto/Roboto-Medium.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Roboto';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('fonts/roboto/Roboto-Bold.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Roboto';
+    font-style: italic;
+    font-weight: 400;
+    font-display: swap;
+    src: url('fonts/roboto/Roboto-Italic.woff2') format('woff2');
+}
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 a, .btn-link {
@@ -120,4 +155,98 @@ h1:focus {
     .flex-column, .navbar-brand {
         padding-left: env(safe-area-inset-left);
     }
+}
+
+
+
+
+/* ==========================================
+   MATERIAL 3 OVERRIDES FOR BOOTSTRAP 5 (PURE CSS)
+   ========================================== */
+
+/* 1. Core Variables & Theme Reset */
+:root {
+    /* Fonts */
+    --bs-font-sans-serif: 'Roboto', system-ui, -apple-system, sans-serif !important;
+
+    /* M3 Baseline Colors */
+    --bs-primary: #6750A4;
+    --bs-primary-rgb: 103, 80, 164;
+    --bs-secondary: #625B71;
+    --bs-secondary-rgb: 98, 91, 113;
+    --bs-body-bg: #FEF7FF;
+    --bs-body-color: #1D1B20;
+
+    /* M3 Tonal Surfaces */
+    --bs-card-bg: #F7F2FA;
+    --bs-modal-bg: #F3EDF7;
+    --bs-border-color: #CAC4D0;
+
+    /* M3 Extreme Rounding */
+    --bs-border-radius-sm: 4px !important;
+    --bs-border-radius: 12px !important;     /* Cards & Dropdowns */
+    --bs-border-radius-lg: 28px !important;  /* Modals & Dialogs */
+    --bs-border-radius-xl: 28px !important;
+    --bs-border-radius-pill: 9999px !important;
+
+    /* Flatten Elevation (M3 uses tone, not harsh shadows) */
+    --bs-box-shadow: none !important;
+    --bs-box-shadow-sm: none !important;
+    --bs-box-shadow-lg: none !important;
+}
+
+/* 2. Buttons (Capsule shaped, taller touch targets) */
+.btn {
+    padding: 0.625rem 1.5rem !important;
+    border-radius: var(--bs-border-radius-pill) !important;
+    text-transform: none !important; /* M3 drops all-caps style */
+    font-weight: 500;
+    transition: all 200ms cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+/* 3. Form Inputs (Outlined variant look) */
+.form-control {
+    border-radius: 8px !important;
+    padding: 0.75rem 1rem !important;
+    border-color: var(--bs-border-color) !important;
+}
+
+/* Remove Bootstrap's glowing blue halo shadow on focus */
+.form-control:focus {
+    border-color: var(--bs-primary) !important;
+    border-width: 2px !important;
+    box-shadow: none !important;
+}
+
+/* Adjust Bootstrap's floating labels to align nicely */
+.form-floating > .form-control {
+    padding-top: 1.625rem !important;
+    padding-bottom: 0.625rem !important;
+}
+.form-floating > label {
+    padding: 0.85rem 1rem !important;
+}
+
+/* 4. Navigation & Pills (Active state pill indicator) */
+.nav-pills .nav-link {
+    border-radius: var(--bs-border-radius-pill) !important;
+    padding: 0.5rem 1.5rem !important;
+    color: var(--bs-secondary);
+}
+
+.nav-pills .nav-link.active {
+    background-color: #E8DEF8 !important; /* M3 Secondary Container */
+    color: #1D192B !important;            /* M3 On Secondary Container */
+}
+
+/* 5. Modals & Cards Layout Fixes */
+.card {
+    border: 1px solid var(--bs-border-color) !important;
+    box-shadow: none !important;
+}
+
+.modal-content {
+    background-color: var(--bs-modal-bg) !important;
+    border: none !important;
+    padding: 1.5rem !important;
 }
