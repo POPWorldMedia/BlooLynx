@@ -1,0 +1,57 @@
+@page "/Other"
+@inject StateService StateService
+
+<BackButton />
+
+<div class="d-flex justify-content-center align-items-center gap-3" style="min-height: 60vh;">
+    <button class="btn btn-secondary @(_lightsFlashing ? "flash-pulse" : "")" type="button" @onclick="FlashLightsAsync">
+        @((MarkupString)SunFillSvg)
+    </button>
+    <button class="btn btn-secondary @(_hornFlashing ? "flash-pulse" : "")" type="button" @onclick="FlashLightsAndHonkAsync">
+        @((MarkupString)MegaphoneFillSvg)
+    </button>
+</div>
+
+@code {
+    private const string SunFillSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708"/></svg>""";
+
+    private const string MegaphoneFillSvg =
+        """<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M13 2.5a1.5 1.5 0 0 1 3 0v11a1.5 1.5 0 0 1-3 0zm-1 .724c-2.067.95-4.539 1.481-7 1.656v6.237a25 25 0 0 1 1.088.085c2.053.204 4.038.668 5.912 1.56zm-8 7.841V4.934c-.68.027-1.399.043-2.008.053A2.02 2.02 0 0 0 0 7v2c0 1.106.896 1.996 1.994 2.009l.496.008a64 64 0 0 1 1.51.048m1.39 1.081q.428.032.85.078l.253 1.69a1 1 0 0 1-.983 1.187h-.548a1 1 0 0 1-.916-.599l-1.314-2.48a66 66 0 0 1 1.692.064q.491.026.966.06"/></svg>""";
+
+    private bool _lightsFlashing;
+    private bool _hornFlashing;
+
+    /// <summary>Toggling "flash-pulse" off, rendering, waiting a beat, then back on is what makes the
+    /// animation replay on every click. Merely re-adding the class to an element that already has it (or that
+    /// still has it from a previous, still-finishing animation) doesn't restart anything — the class was never
+    /// actually removed from the DOM in between, so nothing changed for the browser to react to. The delay
+    /// gives the browser an actual frame with the class absent before re-adding it.</summary>
+    private async Task FlashLightsAsync()
+    {
+        _lightsFlashing = false;
+        StateHasChanged();
+        await Task.Delay(1);
+        _lightsFlashing = true;
+        StateHasChanged();
+
+        if (StateService.SelectedVehicle is not null)
+        {
+            await StateService.SelectedVehicle.FlashLightsAsync();
+        }
+    }
+
+    private async Task FlashLightsAndHonkAsync()
+    {
+        _hornFlashing = false;
+        StateHasChanged();
+        await Task.Delay(1);
+        _hornFlashing = true;
+        StateHasChanged();
+
+        if (StateService.SelectedVehicle is not null)
+        {
+            await StateService.SelectedVehicle.FlashLightsAndHonkAsync();
+        }
+    }
+}

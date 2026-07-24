@@ -47,7 +47,10 @@ a, .btn-link {
     border-color: #1861ac;
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+/* :focus-visible (not plain :focus) so this ring only shows for keyboard/assistive-tech navigation, not for
+   an ordinary touch tap or mouse click — on plain btn-secondary buttons (no colored background to mask it,
+   e.g. Other.razor's flash/honk buttons) a tap-triggered ring was clearly visible and looked like a UI glitch. */
+.btn:focus-visible, .btn-link.nav-link:focus-visible, .form-control:focus, .form-check-input:focus {
   box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
@@ -131,10 +134,38 @@ h1:focus {
     animation: heartbeat 1s ease-in-out infinite;
 }
 
+/* Same lighter/normal secondary shades as heartbeat, but a single cycle rather than looping — for fire-and-forget
+   commands (flash lights, flash+honk) that don't wait for a response, so there's no ongoing "busy" state to
+   reflect, just a one-off acknowledgement that the tap registered. */
+@keyframes flash-pulse {
+    0% {
+        background-color: #adb5bd;
+        border-color: #6c757d;
+    }
+
+    100% {
+        background-color: #6c757d;
+        border-color: #6c757d;
+    }
+}
+
+.flash-pulse {
+    animation: flash-pulse 1s ease-in-out 1;
+    animation-fill-mode: forwards;
+}
+
 .climate-on {
     background: linear-gradient(to bottom, #0d6efd, #dc3545);
     border-color: transparent;
     color: white;
+}
+
+/* Home's list-group rows have differing content (some show a status line under the title, some don't), which
+   left them different heights. A shared min-height keeps every row the same height regardless of how much
+   content it has, and (combined with align-items-center already on each row) keeps that content vertically
+   centered within it either way. */
+.home-list-item {
+    min-height: 4.5rem;
 }
 
 .status-bar-safe-area {
@@ -164,23 +195,15 @@ h1:focus {
    MATERIAL 3 OVERRIDES FOR BOOTSTRAP 5 (PURE CSS)
    ========================================== */
 
-/* 1. Core Variables & Theme Reset */
+/* 1. Core Variables & Theme Reset — theme-agnostic (fonts/radius/shadow apply the same in light or dark).
+   Colors are deliberately NOT here: :root and [data-bs-theme="dark"] target the same <html> element with equal
+   specificity, so a color hardcoded on :root would permanently beat Bootstrap's own [data-bs-theme="dark"]
+   variable overrides regardless of the OS theme — which is exactly what broke dark mode before. Colors are
+   scoped to [data-bs-theme="light"]/[data-bs-theme="dark"] below instead, matching how Bootstrap itself scopes
+   its dark-mode variables, so index.html's existing prefers-color-scheme → data-bs-theme wiring keeps working. */
 :root {
     /* Fonts */
     --bs-font-sans-serif: 'Roboto', system-ui, -apple-system, sans-serif !important;
-
-    /* M3 Baseline Colors */
-    --bs-primary: #6750A4;
-    --bs-primary-rgb: 103, 80, 164;
-    --bs-secondary: #625B71;
-    --bs-secondary-rgb: 98, 91, 113;
-    --bs-body-bg: #FEF7FF;
-    --bs-body-color: #1D1B20;
-
-    /* M3 Tonal Surfaces */
-    --bs-card-bg: #F7F2FA;
-    --bs-modal-bg: #F3EDF7;
-    --bs-border-color: #CAC4D0;
 
     /* M3 Extreme Rounding */
     --bs-border-radius-sm: 4px !important;
@@ -193,6 +216,34 @@ h1:focus {
     --bs-box-shadow: none !important;
     --bs-box-shadow-sm: none !important;
     --bs-box-shadow-lg: none !important;
+}
+
+/* 1a. M3 Baseline Colors — Light. --bs-primary is deliberately left unset here so Bootstrap's own stock blue
+   (#0d6efd) applies instead of the M3 purple — this app's called BlooLynx, blue is the point. */
+[data-bs-theme="light"] {
+    --bs-secondary: #625B71;
+    --bs-secondary-rgb: 98, 91, 113;
+    --bs-body-bg: #FEF7FF;
+    --bs-body-color: #1D1B20;
+
+    /* M3 Tonal Surfaces */
+    --bs-card-bg: #F7F2FA;
+    --bs-modal-bg: #F3EDF7;
+    --bs-border-color: #CAC4D0;
+}
+
+/* 1b. M3 Baseline Colors — Dark (same source-color pairing minus primary, which stays Bootstrap's own stock
+   dark-mode blue for the same reason as the light theme above). */
+[data-bs-theme="dark"] {
+    --bs-secondary: #CCC2DC;
+    --bs-secondary-rgb: 204, 194, 220;
+    --bs-body-bg: #141218;
+    --bs-body-color: #E6E0E9;
+
+    /* M3 Tonal Surfaces */
+    --bs-card-bg: #211F26;
+    --bs-modal-bg: #2B2930;
+    --bs-border-color: #49454F;
 }
 
 /* 2. Buttons (Capsule shaped, taller touch targets) */
@@ -234,9 +285,14 @@ h1:focus {
     color: var(--bs-secondary);
 }
 
-.nav-pills .nav-link.active {
+[data-bs-theme="light"] .nav-pills .nav-link.active {
     background-color: #E8DEF8 !important; /* M3 Secondary Container */
     color: #1D192B !important;            /* M3 On Secondary Container */
+}
+
+[data-bs-theme="dark"] .nav-pills .nav-link.active {
+    background-color: #4A4458 !important; /* M3 Secondary Container (dark) */
+    color: #E8DEF8 !important;            /* M3 On Secondary Container (dark) */
 }
 
 /* 5. Modals & Cards Layout Fixes */

@@ -17,8 +17,8 @@ Check out the `apireference.md` in the `docs` folder. The Android app will be po
 * Set charge limits (EV's)
 * Potentially show remaining charge time (EV's)
 * ✅Tire pressure
-* Flash lights
-* Flash lights and honk
+* ✅Flash lights
+* ✅Flash lights and honk
 * Location (hand off to maps?)
 * ✅Display odometer and VIN
 * ✅Display year/make/model

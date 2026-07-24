@@ -83,7 +83,7 @@ else
         }
         
         <ul class="list-group list-group-flush">
-            <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+            <li class="list-group-item list-group-item-action home-list-item d-flex justify-content-between align-items-center">
                 <div>
                     <h2>Climate</h2>
                     <div>@ClimateStatusText</div>
@@ -91,19 +91,27 @@ else
                 <a href="/climate" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
-            <li class="list-group-item d-flex justify-content-between align-items-center">
+            <li class="list-group-item list-group-item-action home-list-item d-flex justify-content-between align-items-center">
                 <div>
                     <h2>Charging</h2>
                     <div>[status]</div>
                 </div>
+                <a href="/Charging" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
-            <li class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+            <li class="list-group-item list-group-item-action home-list-item d-flex justify-content-between align-items-center">
                 <div>
                     <h2>Tires</h2>
                     <div class="@(HasTirePressureProblem ? "text-danger" : "")">@TireStatusText</div>
                 </div>
                 <a href="/Tires" class="stretched-link"></a>
+                @((MarkupString)ChevronRightSvg)
+            </li>
+            <li class="list-group-item list-group-item-action home-list-item d-flex justify-content-between align-items-center">
+                <div>
+                    <h2>Other Controls</h2>
+                </div>
+                <a href="/Other" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
         </ul>

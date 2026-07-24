@@ -10,7 +10,8 @@ public partial class MainPage : ContentPage
 	/// <summary>Bridges the Android hardware/gesture back button into Blazor's client-side router.
 	/// <c>BlazorWebView</c>'s navigation lives entirely in the WebView's own JS history, separate from
 	/// MAUI's native back-button handling, so without this override, pressing back on a sub-page like
-	/// <c>/climate</c> or <c>/Tires</c> would just exit/background the app instead of navigating within it.
+	/// <c>/climate</c>, <c>/Charging</c>, <c>/Tires</c>, or <c>/Other</c> would just exit/background the app
+	/// instead of navigating within it.
 	/// </summary>
 	/// <remarks>
 	/// Everywhere else (i.e. Home) explicitly quits rather than falling through to the base
@@ -25,7 +26,7 @@ public partial class MainPage : ContentPage
 		var webView = blazorWebView.Handler?.PlatformView as global::Android.Webkit.WebView;
 		var currentPath = webView?.Url is { } url ? new Uri(url).AbsolutePath.TrimEnd('/') : null;
 
-		if (currentPath is "/climate" or "/Tires")
+		if (currentPath is "/climate" or "/Charging" or "/Tires" or "/Other")
 		{
 			webView!.EvaluateJavascript("Blazor.navigateTo('/')", null);
 			return true;
