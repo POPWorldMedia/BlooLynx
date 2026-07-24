@@ -2,7 +2,7 @@
 
 Every network-calling public method in this library, with the HTTP path it hits, the headers it adds beyond the common set, and the request/response bodies involved. Base URL for everything is `https://api.telematics.hyundaiusa.com`.
 
-Pure local accessors that don't call the network (`Vehicle.Vin()`, `Name()`, `Nickname()`, `Id()`, `BrandIndicator()`) are omitted — they just read `VehicleConfig` fields already in memory.
+Fields that don't call the network (VIN, name, nickname, id, brand indicator, etc.) are omitted — callers just read them directly off `Vehicle.VehicleConfig`, which is populated once by `GetVehiclesAsync` and held in memory from then on.
 
 ## Method quick reference
 

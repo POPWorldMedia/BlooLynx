@@ -111,8 +111,9 @@ public class Client(
 
     public async Task<Response> LoginAsync(CancellationToken cancellationToken = default)
     {
+        var payload = new { username = UserConfig.Username, password = UserConfig.Password };
         var result = await RequestTokenAsync(
-            ApiPaths.OAuthToken, new { username = UserConfig.Username, password = UserConfig.Password }, cancellationToken)
+            ApiPaths.OAuthToken, payload, cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccessful)
         {
@@ -144,11 +145,10 @@ public class Client(
         };
 
         var content = JsonContent.Create(payload);
-        using var response = await RawSendAsync(HttpMethod.Post, service, headers, content, cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await RawSendAsync(HttpMethod.Post, service, headers, content, cancellationToken).ConfigureAwait(false);
 
-        Func<string, TokenResponse> parseTokenResponse = body => JsonSerializer.Deserialize<TokenResponse>(body)!;
-        return await ResponseFactory.FromHttpResponseAsync(response, parseTokenResponse)
+        TokenResponse ParseTokenResponse(string body) => JsonSerializer.Deserialize<TokenResponse>(body)!;
+        return await ResponseFactory.FromHttpResponseAsync(response, (Func<string, TokenResponse>)ParseTokenResponse)
             .ConfigureAwait(false);
     }
 
