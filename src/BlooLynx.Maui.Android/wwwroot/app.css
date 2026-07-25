@@ -1,40 +1,40 @@
-/* Roboto, from Google Fonts (fonts.google.com/specimen/Roboto), bundled locally under wwwroot/fonts/roboto so
-   the app doesn't depend on network access to fonts.gstatic.com at runtime. Latin/Latin-Extended glyphs only —
+/* Google Sans, from Google Fonts (fonts.google.com/specimen/Google+Sans), bundled locally under wwwroot/fonts/googlesans
+   so the app doesn't depend on network access to fonts.gstatic.com at runtime. Latin/Latin-Extended glyphs only —
    this app's UI text doesn't need Cyrillic/Greek/etc., and the full character-set files are considerably larger. */
 @font-face {
-    font-family: 'Roboto';
+    font-family: 'Google Sans';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('fonts/roboto/Roboto-Regular.woff2') format('woff2');
+    src: url('fonts/googlesans/GoogleSans-Regular.woff2') format('woff2');
 }
 
 @font-face {
-    font-family: 'Roboto';
+    font-family: 'Google Sans';
     font-style: normal;
     font-weight: 500;
     font-display: swap;
-    src: url('fonts/roboto/Roboto-Medium.woff2') format('woff2');
+    src: url('fonts/googlesans/GoogleSans-Medium.woff2') format('woff2');
 }
 
 @font-face {
-    font-family: 'Roboto';
+    font-family: 'Google Sans';
     font-style: normal;
     font-weight: 700;
     font-display: swap;
-    src: url('fonts/roboto/Roboto-Bold.woff2') format('woff2');
+    src: url('fonts/googlesans/GoogleSans-Bold.woff2') format('woff2');
 }
 
 @font-face {
-    font-family: 'Roboto';
+    font-family: 'Google Sans';
     font-style: italic;
     font-weight: 400;
     font-display: swap;
-    src: url('fonts/roboto/Roboto-Italic.woff2') format('woff2');
+    src: url('fonts/googlesans/GoogleSans-Italic.woff2') format('woff2');
 }
 
 html, body {
-    font-family: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Google Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 a, .btn-link {
@@ -203,7 +203,7 @@ h1:focus {
    its dark-mode variables, so index.html's existing prefers-color-scheme → data-bs-theme wiring keeps working. */
 :root {
     /* Fonts */
-    --bs-font-sans-serif: 'Roboto', system-ui, -apple-system, sans-serif !important;
+    --bs-font-sans-serif: 'Google Sans', system-ui, -apple-system, sans-serif !important;
 
     /* M3 Extreme Rounding */
     --bs-border-radius-sm: 4px !important;
