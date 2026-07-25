@@ -9,6 +9,7 @@
         <AssemblyName>BlooLynx</AssemblyName>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>CS1591</NoWarn>
+        <Version>1.0.0-beta.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
