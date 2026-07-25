@@ -4,6 +4,8 @@ An unofficial `netstandard` C# library that interrogates the US Hyundai API to c
 
 > Use at your own risk. This is totally unofficial, and it's provided as-is, with no guarantees about the suitability of any use or purpose. You've been warned.
 
+<img width="500" height="936" alt="Screenshot_20260725-172650" src="https://github.com/user-attachments/assets/9764604b-6c9b-4ce3-a76c-959a3a418708" />
+
 ## Getting started
 
 Check out the `apireference.md` in the `docs` folder for information on the API itself. Hyundai's overall design is a little clunky, because it doesn't stream data from the car to the client. It's all one-off calls and long-polling to get a result. It's also different in every region, so I'm not sure how they maintain all of these odd branches.
