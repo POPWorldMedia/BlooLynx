@@ -1,3 +1,311 @@
 @page "/Charging"
+@implements IDisposable
+@using BlooLynx
+@using BlooLynx.Models
+@inject StateService StateService
 
 <BackButton />
+
+@if (_selectedVehicle is null)
+{
+    <p>No vehicle selected.</p>
+}
+else if (_isLoading)
+{
+    <div class="d-flex justify-content-center my-3">
+        <span class="spinner-border" aria-hidden="true"></span>
+    </div>
+}
+else if (_status is not null)
+{
+    <VehicleControls Vehicle="_selectedVehicle" @bind-Status="_status" @bind-IsBusy="_isBusy" IsHideNonCharging="true" />
+
+    <div class="d-flex justify-content-center text-center @((_status.DriveTrain.IsCharging ?? false) ? "" : "invisible")">
+        <div class="mx-4">
+            <h1 class="mb-1">@(_status.DriveTrain.ChargingPowerKw?.ToString("0.#") ?? "unknown")kw</h1>
+            <div class="small text-capitalize">Current charge rate</div>
+        </div>
+    </div>
+
+    <ul class="list-group list-group-flush mt-5">
+        <li class="list-group-item home-list-item">
+            <div class="w-100">
+                <h2>AC Charging Limit: @_acLimit%</h2>
+                <div class="position-relative d-flex align-items-center">
+                    <div class="progress position-absolute w-100 top-50 start-0 translate-middle-y" style="height: 4px; pointer-events: none;">
+                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 50%"></div>
+                        <div class="progress-bar bg-primary" role="progressbar" style="width: 50%"></div>
+                    </div>
+                    <input type="range" class="form-range position-relative" style="width: 50%; margin-left: 50%;" min="50" max="100" step="10" value="@_acLimit" disabled="@_isBusy" @oninput="OnAcInputAsync" />
+                </div>
+            </div>
+        </li>
+        <li class="list-group-item home-list-item">
+            <div class="w-100">
+                <h2>DC Charging Limit: @_dcLimit%</h2>
+                <div class="position-relative d-flex align-items-center">
+                    <div class="progress position-absolute w-100 top-50 start-0 translate-middle-y" style="height: 4px; pointer-events: none;">
+                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 50%"></div>
+                        <div class="progress-bar bg-primary" role="progressbar" style="width: 50%"></div>
+                    </div>
+                    <input type="range" class="form-range position-relative" style="width: 50%; margin-left: 50%;" min="50" max="100" step="10" value="@_dcLimit" disabled="@_isBusy" @oninput="OnDcInputAsync" />
+                </div>
+            </div>
+        </li>
+    </ul>
+
+    @if (_limitError is not null)
+    {
+        <p class="text-danger small text-center">@_limitError</p>
+    }
+}
+else if (_error is not null)
+{
+    <p>@_error</p>
+}
+
+<PinModal @bind-IsOpen="_pinModalOpen" IsBusy="_isBusy" ErrorMessage="@_pinError" OnSubmit="HandlePinSubmittedAsync" OnCancel="HandlePinCancelled" />
+
+@code {
+    private Vehicle? _selectedVehicle;
+    private Status? _status;
+    private string? _error;
+    private bool _isLoading;
+    private bool _isBusy;
+    private bool _pinModalOpen;
+    private string? _pinError;
+    private string? _limitError;
+    private int _acLimit = 50;
+    private int _dcLimit = 50;
+    private bool _limitsInitialized;
+    private CancellationTokenSource? _limitDebounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        StateService.Resumed += HandleResumed;
+
+        _selectedVehicle = StateService.SelectedVehicle;
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        if (StateService.CachedStatus is not null)
+        {
+            _status = StateService.CachedStatus;
+            SeedLimitsIfNeeded();
+            return;
+        }
+
+        await RefreshStatusAsync();
+    }
+
+    private void HandleResumed()
+    {
+        InvokeAsync(RefreshStatusAsync);
+    }
+
+    /// <summary>Populates the sliders from the vehicle's reported limits, but only once: after that, the
+    /// sliders are user-driven, and re-syncing them on every incoming status (e.g. after a resume-refresh)
+    /// would yank a slider back mid-adjustment.</summary>
+    private void SeedLimitsIfNeeded()
+    {
+        if (_limitsInitialized || _status is null)
+        {
+            return;
+        }
+
+        _acLimit = (int)(_status.DriveTrain.ChargeLimitAc ?? _acLimit);
+        _dcLimit = (int)(_status.DriveTrain.ChargeLimitDc ?? _dcLimit);
+        _limitsInitialized = true;
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+        _status = null;
+        StateHasChanged();
+
+        var result = await _selectedVehicle.StatusAsync();
+        if (result.IsSuccessful)
+        {
+            _status = result.Data;
+            StateService.CachedStatus = _status;
+            SeedLimitsIfNeeded();
+        }
+        else
+        {
+            _error = "Could not load vehicle status.";
+        }
+
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    /// <summary>Bound to <c>oninput</c> (fires continuously while dragging), not <c>onchange</c> (fires once on
+    /// release) — that way the header text next to the slider updates live as it moves, and restarting the
+    /// debounce on every tick means it naturally only fires the command once ticks stop for 500ms, i.e. after
+    /// release, without depending on a native "change" event some Android WebView range widgets fire unreliably.</summary>
+    private async Task OnAcInputAsync(ChangeEventArgs e)
+    {
+        _acLimit = ParseLimit(e.Value, _acLimit);
+        await ScheduleApplyLimitsAsync();
+    }
+
+    private async Task OnDcInputAsync(ChangeEventArgs e)
+    {
+        _dcLimit = ParseLimit(e.Value, _dcLimit);
+        await ScheduleApplyLimitsAsync();
+    }
+
+    private static int ParseLimit(object? value, int fallback) =>
+        value is not null && int.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
+
+    /// <summary>Waits half a second after the last slider release before actually firing the command — so
+    /// dragging one slider, then immediately the other, only sends a single combined request instead of one
+    /// per release. A fresh <see cref="CancellationTokenSource"/> per call cancels any still-waiting previous
+    /// one, restarting the wait.</summary>
+    private async Task ScheduleApplyLimitsAsync()
+    {
+        _limitDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _limitDebounceCts = cts;
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        await TrySetChargeLimitsAsync();
+    }
+
+    private async Task TrySetChargeLimitsAsync()
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        if (!StateService.HasPin)
+        {
+            OpenPinModal();
+            return;
+        }
+
+        await PerformSetChargeLimitsAsync(pinAlreadyConfirmed: true);
+    }
+
+    private void OpenPinModal()
+    {
+        _pinError = null;
+        _pinModalOpen = true;
+    }
+
+    private async Task HandlePinSubmittedAsync(string pin)
+    {
+        StateService.SetPendingPin(pin);
+        _pinModalOpen = false;
+
+        await PerformSetChargeLimitsAsync(pinAlreadyConfirmed: false);
+    }
+
+    private void HandlePinCancelled()
+    {
+        _pinError = null;
+    }
+
+    /// <summary>Fires the charge-limit command and waits for it to actually complete. Mirrors the same PIN
+    /// handling convention as <c>VehicleControls</c>'s lock/charge/climate actions: a failure with an
+    /// already-proven PIN shows an inline error and leaves the PIN alone, while a fresh PIN that fails gets
+    /// forgotten and reprompted. On success, refreshes status for other fields (SOC, range, etc.) but
+    /// deliberately leaves the sliders at what was just requested rather than resyncing them from that response —
+    /// even with a live (<c>refresh: true</c>) fetch, the vehicle's reported charge limit lags behind the command
+    /// by more than this immediate re-fetch accounts for, so trusting it here showed a transient wrong value
+    /// (confirmed live: sent 80, this fetch reported back 90, but a later refresh from Home showed the correct
+    /// 80). Since <see cref="StateService.SetChargeLimitsAsync"/> already waited for the command to complete,
+    /// the requested value is the trustworthy one immediately after success.</summary>
+    private async Task PerformSetChargeLimitsAsync(bool pinAlreadyConfirmed)
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _pinError = null;
+        _limitError = null;
+        StateHasChanged();
+
+        try
+        {
+            var commandResult = await StateService.SetChargeLimitsAsync(_selectedVehicle, _acLimit, _dcLimit);
+            if (commandResult.IsSuccessful)
+            {
+                await StateService.ConfirmPinAsync();
+                await RefreshStatusQuietAsync();
+                _pinModalOpen = false;
+            }
+            else if (pinAlreadyConfirmed)
+            {
+                _limitError = commandResult.ErrorMessage;
+            }
+            else
+            {
+                await StateService.ForgetPinAsync();
+                _pinError = commandResult.ErrorMessage;
+                _pinModalOpen = true;
+            }
+        }
+        finally
+        {
+            _isBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Re-fetches status without the full-page loading spinner — used right after a successful
+    /// charge-limit command to pick up other fields (SOC, range, etc.), forcing a live poll (<c>refresh: true</c>)
+    /// rather than the default cached snapshot. Deliberately does NOT trust this response's own charge-limit
+    /// fields (see <see cref="PerformSetChargeLimitsAsync"/>) — instead overwrites them with the values already
+    /// known to be correct before caching, so a later revisit of this page doesn't re-seed the sliders from
+    /// BlueLink's still-lagging snapshot.</summary>
+    private async Task RefreshStatusQuietAsync()
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        var result = await _selectedVehicle.StatusAsync(refresh: true);
+        if (result.IsSuccessful)
+        {
+            _status = result.Data;
+            if (_status is not null)
+            {
+                _status.DriveTrain.ChargeLimitAc = _acLimit;
+                _status.DriveTrain.ChargeLimitDc = _dcLimit;
+            }
+
+            StateService.CachedStatus = _status;
+        }
+
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        StateService.Resumed -= HandleResumed;
+        _limitDebounceCts?.Cancel();
+        _limitDebounceCts?.Dispose();
+    }
+}

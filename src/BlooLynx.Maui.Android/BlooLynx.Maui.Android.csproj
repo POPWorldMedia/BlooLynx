@@ -10,6 +10,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <EnableDefaultCssItems>false</EnableDefaultCssItems>
         <Nullable>enable</Nullable>
+        <Version>1.0.0</Version>
+        <VersionSuffix>beta</VersionSuffix>
 
         <!-- Enable XAML source generation for faster build times and improved performance.
              This generates C# code from XAML at compile time instead of runtime inflation.
@@ -20,10 +22,10 @@
         <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
         <!-- Display name -->
-        <ApplicationTitle>BlooLynx.Maui.Android</ApplicationTitle>
+        <ApplicationTitle>BlooLynx</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.bloolynx.maui.android</ApplicationId>
+        <ApplicationId>com.bloolynx.maui.android</ApplicationId>
 
         <!-- Versions -->
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

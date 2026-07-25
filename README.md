@@ -13,9 +13,9 @@ Check out the `apireference.md` in the `docs` folder. The Android app will be po
 * ✅Current battery/fuel percentage and range
 * ✅Lock/Unlock
 * ✅Climate start/stop with temperature setting
-* Charge start/stop (EV's)
+* ✅Charge start/stop (EV's)
 * Set charge limits (EV's)
-* Potentially show remaining charge time (EV's)
+* ✅Show remaining charge time (EV's)
 * ✅Tire pressure
 * ✅Flash lights
 * ✅Flash lights and honk

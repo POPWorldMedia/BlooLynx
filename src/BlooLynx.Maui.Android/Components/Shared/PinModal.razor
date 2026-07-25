@@ -1,0 +1,72 @@
+@if (IsOpen)
+{
+    <div class="modal d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Enter PIN</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Enter your BlueLink PIN to control the vehicle. It will be saved so you aren't asked again.</p>
+                    <input type="password" inputmode="numeric" class="form-control" @bind="_pinInput" @bind:event="oninput" disabled="@IsBusy" />
+                    @if (ErrorMessage is not null)
+                    {
+                        <p class="text-danger small mt-2 mb-0">@ErrorMessage</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CancelAsync" disabled="@IsBusy">Cancel</button>
+                    <button type="button" class="btn btn-primary @(IsBusy ? "heartbeat" : "")" @onclick="SubmitAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(_pinInput))">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    /// <summary>Disables the input/buttons while the caller's own PIN-dependent action is in flight.</summary>
+    [Parameter]
+    public bool IsBusy { get; set; }
+
+    /// <summary>Set by the caller after a failed submit, so it can show why without this component needing to
+    /// know anything about what the PIN was for.</summary>
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>Invoked with the trimmed PIN text on submit. This component only collects the text — the caller
+    /// decides what to do with it (persist it via <c>StateService</c>, retry whichever action was pending, etc.).</summary>
+    [Parameter]
+    public EventCallback<string> OnSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string _pinInput = string.Empty;
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_pinInput))
+        {
+            return;
+        }
+
+        var pin = _pinInput.Trim();
+        _pinInput = string.Empty;
+        await OnSubmit.InvokeAsync(pin);
+    }
+
+    private async Task CancelAsync()
+    {
+        _pinInput = string.Empty;
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+        await OnCancel.InvokeAsync();
+    }
+}
