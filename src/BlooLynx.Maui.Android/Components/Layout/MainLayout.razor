@@ -12,6 +12,7 @@
             @if (_menuOpen)
             {
                 <ul class="dropdown-menu dropdown-menu-end show position-absolute" style="top: 100%; right: 0;">
+                    <li><span class="dropdown-item-text text-muted">App v@(AppInfo.Current.VersionString)</span></li>
                     <li><button type="button" class="dropdown-item" @onclick="LogoutAsync">Logout</button></li>
                 </ul>
             }
