@@ -297,26 +297,49 @@ public class Vehicle
             Range = range,
             RangeUnit = rangeUnit,
             FuelLevel = raw.TryGetProperty("fuelLevel", out var fuelLevel) ? fuelLevel.GetDouble() : null,
-            Charging = raw.TryGetProperty("evStatus", out var ev) && ev.TryGetProperty("batteryCharge", out var bc) && bc.GetBoolean(),
+            IsCharging = raw.TryGetProperty("evStatus", out var ev) && ev.TryGetProperty("batteryCharge", out var bc) && bc.GetBoolean(),
             BatteryCharge12v = raw.TryGetProperty("battery", out var bat) && bat.TryGetProperty("batSoc", out var soc) ? soc.GetDouble() : null,
             StateOfCharge = raw.TryGetProperty("evStatus", out var ev2) && ev2.TryGetProperty("batteryStatus", out var bs) ? bs.GetDouble() : null,
             PluggedTo = raw.TryGetProperty("evStatus", out var ev3) && ev3.TryGetProperty("batteryPlugin", out var bp) && bp.ValueKind == JsonValueKind.Number
                 ? (EvPlugType)bp.GetInt32()
                 : null,
-            EstimatedCurrentChargeDuration = GetRemainTimeMinutes(raw, "atc"),
-            EstimatedFastChargeDuration = GetRemainTimeMinutes(raw, "etc1"),
-            EstimatedPortableChargeDuration = GetRemainTimeMinutes(raw, "etc2"),
-            EstimatedStationChargeDuration = GetRemainTimeMinutes(raw, "etc3"),
+            EstimatedCurrentChargeDuration = GetRemainTimeMinutes(raw),
+            ChargeLimitDc = GetChargeLimit(raw, plugType: 0),
+            ChargeLimitAc = GetChargeLimit(raw, plugType: 1),
+            ChargingPowerKw = raw.TryGetProperty("evStatus", out var ev4) && ev4.TryGetProperty("realTimePower", out var rtp) ? rtp.GetDouble() : null,
             TirePressureWarningLamp = ParseTirePressureLamp(raw),
             TirePressure = ParseTirePressure(raw),
         };
     }
 
-    private static double? GetRemainTimeMinutes(JsonElement vehicleStatus, string key) =>
+    private static double? GetChargeLimit(JsonElement vehicleStatus, int plugType)
+    {
+        if (!vehicleStatus.TryGetProperty("evStatus", out var ev) ||
+            !ev.TryGetProperty("reservChargeInfos", out var reservChargeInfos) ||
+            !reservChargeInfos.TryGetProperty("targetSOClist", out var targetSocList) ||
+            targetSocList.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var entry in targetSocList.EnumerateArray())
+        {
+            if (entry.TryGetProperty("plugType", out var pt) && pt.ValueKind == JsonValueKind.Number && pt.GetInt32() == plugType &&
+                entry.TryGetProperty("targetSOClevel", out var level))
+            {
+                return level.GetDouble();
+            }
+        }
+
+        return null;
+    }
+
+    private static double? GetRemainTimeMinutes(JsonElement vehicleStatus) =>
         vehicleStatus.TryGetProperty("evStatus", out var ev) &&
-        ev.TryGetProperty("remainTime2", out var remainTime2) &&
-        remainTime2.TryGetProperty(key, out var entry) &&
-        entry.TryGetProperty("value", out var val)
+        ev.TryGetProperty("remainTime", out var remainTime) &&
+        remainTime.ValueKind == JsonValueKind.Array &&
+        remainTime.GetArrayLength() > 0 &&
+        remainTime[0].TryGetProperty("value", out var val)
             ? val.GetDouble()
             : null;
 

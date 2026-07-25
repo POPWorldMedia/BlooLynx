@@ -281,10 +281,10 @@ Response body (`vehicleStatus` object; only fields actually read are shown — t
 Maps to `Status { ClosurePanels, Climate, DriveTrain, LastUpdate }`:
 - `ClosurePanels`: `HoodOpen`, `TrunkOpen`, `Locked` (from `doorLock`), `OpenDoors`.
 - `Climate`: `Active` (from `airCtrlOn`), `SteeringWheelHeat`, `RearWindowHeat` (from `sideBackWindowHeat`), `Defrost`, `Temperature` (from `airTemp`, as a `ClimateTemperature { IsOn, Temperature, Unit }` struct — `airTemp.value` is the sentinel string `"OFF"` instead of a number when the setpoint isn't active, per `hyundai_kia_connect_api`'s own parsing (`ApiImplType1.py`: `if air_temp not in (None, "OFF")`), which this collapses into `IsOn = false`/`Temperature = 0` rather than leaving callers to string-compare the raw value; `Unit` is an enum, `Celsius = 0`/`Fahrenheit = 1`, confirmed via the same source — which notably doesn't bother reading this field itself for the US region, since that API appears to always operate in Fahrenheit regardless).
-- `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration`/`EstimatedFastChargeDuration`/`EstimatedPortableChargeDuration`/`EstimatedStationChargeDuration` (from `evStatus.remainTime2.{atc,etc1,etc2,etc3}.value` respectively — see the caveat on `DriveTrainStatus` in code: this specific atc/etc1/etc2/etc3 labeling is inferred by analogy with Kia's equivalent fields, not independently confirmed), `TirePressureWarningLamp`, `TirePressure` (from `tirePressure.tirePressure{FrontLeft,FrontRight,RearLeft,RearRight}`, in PSI — the `datetime{FrontLeft,...}` timestamps in the same node aren't read).
+- `DriveTrain`: `Ignition` (from `engine`), `Accessory` (from `acc`), `Range` (EV: `evStatus.drvDistance[0].rangeByFuel.totalAvailableRange.value`, falling back to ICE `dte.value` if that's zero/absent) with `RangeUnit` (a `DistanceUnit`, from that same node's `unit` field), `FuelLevel` (from top-level `fuelLevel`, not under `evStatus`; gas tank percentage — meaningful for ICE/PHEV, reads 0 on a pure EV), `Charging` (from `evStatus.batteryCharge`), `BatteryCharge12v` (from `battery.batSoc`), `StateOfCharge` (from `evStatus.batteryStatus`), `PluggedTo` (from `evStatus.batteryPlugin`, as `EvPlugType?`), `EstimatedCurrentChargeDuration` (from `evStatus.remainTime[0].value`), `ChargeLimitDc`/`ChargeLimitAc` (from `evStatus.reservChargeInfos.targetSOClist`, matched by `plugType` 0=DC/1=AC, reading `targetSOClevel`), `ChargingPowerKw` (from `evStatus.realTimePower`), `TirePressureWarningLamp`, `TirePressure` (from `tirePressure.tirePressure{FrontLeft,FrontRight,RearLeft,RearRight}`, in PSI — the `datetime{FrontLeft,...}` timestamps in the same node aren't read).
 - `LastUpdate` from `dateTime`, parsed as `DateTime?` (`null` if missing/unparsable).
 
-**Verified live**: every field this library reads was confirmed present with the expected type, including the newly-added `batteryPlugin` and `remainTime2.{atc,etc1,etc2,etc3}`.
+**Verified live**: every field this library reads was confirmed present with the expected type, including the newly-added `batteryPlugin` and `remainTime[0].value`.
 
 **Also observed live but still unmapped** (real, populated fields seen in a live response that this library doesn't currently read — see the full contract below for the complete list): a second GPS location at `vehicleStatus.vehicleLocation.coord` (redundant with `findMyCar`), the per-tire `datetime{FrontLeft,...}` timestamps alongside `tirePressure` (the PSI values themselves are now mapped, see above), `windowOpen` state, a live (current, not just settable) `seatHeaterVentInfo`, and several EV fields (`v2G`, `wirelessCharging`, `chargePortDoorOpen`, `dischargingLimit`, a populated `reservChargeInfos.targetSOClist`, and a real charge-schedule/off-peak-power configuration).
 
@@ -352,7 +352,7 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
     "airCtrlOn": "<bool>",                                  // (mapped) -> Climate.Active
     "airTemp": { "unit": "<int>", "value": "<string>", "hvacTempType": "<int>" }, // (mapped, minus hvacTempType) -> Climate.Temperature
     "evStatus": {
-      "batteryCharge": "<bool>",                            // (mapped) -> DriveTrain.Charging
+      "batteryCharge": "<bool>",                            // (mapped) -> DriveTrain.IsCharging
       "batteryStatus": "<int>",                             // (mapped) -> DriveTrain.StateOfCharge
       "batteryPlugin": "<int, 0-3>",                         // (mapped) -> DriveTrain.PluggedTo
       "valueDiff": "<int>", "timeDiff": "<int>",
@@ -360,8 +360,9 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
       "batteryPrecondition": "<bool>", "batteryDisCharge": "<bool>",
       "batteryDisChargePlugin": "<int>", "disChargeRemaintime": "<int>", "dischargingLimit": "<int>",
       "chargePortDoorOpen": "<int>",
-      "remainTime": [ { "unit": "<int>", "value": "<int>" } ],
-      "remainTime2": {                                      // (mapped) -> DriveTrain.Estimated{Current,Fast,Portable,Station}ChargeDuration
+      "realTimePower": "<double>",                          // (mapped) -> DriveTrain.ChargingPowerKw
+      "remainTime": [ { "unit": "<int>", "value": "<int>" } ],   // (mapped, [0] only) -> DriveTrain.EstimatedCurrentChargeDuration
+      "remainTime2": {                                      // unmapped: per-charge-method estimates (atc/etc1/etc2/etc3), not tied to current session
         "atc": { "unit": "<int>", "value": "<int>" },
         "etc1": { "unit": "<int>", "value": "<int>" },
         "etc2": { "unit": "<int>", "value": "<int>" },
@@ -373,7 +374,7 @@ Every field seen in a real `vehicleStatus` response, not just the subset this li
             "evModeRange": { "unit": "<int>", "value": "<int>" }
         } }
       ],
-      "reservChargeInfos": {                                // unmapped: charge limits + schedule
+      "reservChargeInfos": {                                // (mapped, targetSOClist only) -> DriveTrain.ChargeLimit{Dc,Ac}; schedule fields below unmapped
         "targetSOClist": [
           { "plugType": "<int, 0=DC/1=AC>", "targetSOClevel": "<int, percent>",
             "dte": { "type": "<int>", "rangeByFuel": { "evModeRange": { "unit": "<int>", "value": "<int>" } } } }

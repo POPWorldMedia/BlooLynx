@@ -3,7 +3,7 @@ namespace BlooLynx.Models;
 public class DriveTrainStatus
 {
     public bool Ignition { get; set; }
-    public bool? Charging { get; set; }
+    public bool? IsCharging { get; set; }
     public double Range { get; set; }
 
     /// <summary>Unit for <see cref="Range"/>, from the same JSON node's <c>unit</c> field (<c>totalAvailableRange.unit</c>
@@ -20,15 +20,17 @@ public class DriveTrainStatus
     public TirePressureWarningLamp TirePressureWarningLamp { get; set; } = new();
     public TirePressure TirePressure { get; set; } = new();
 
-    /// <summary>
-    /// Estimated minutes remaining for each charge method, from <c>evStatus.remainTime2</c>. The
-    /// atc/etc1/etc2/etc3 -> current/fast/portable/station mapping is inferred by analogy with Kia's
-    /// equivalent (but differently-nested) remainChargeTime fields, not independently confirmed against
-    /// documentation, so treat the specific method assignment with some skepticism even though the
-    /// values themselves are confirmed real.
-    /// </summary>
+    /// <summary>Estimated minutes remaining on the current charge session, from <c>evStatus.remainTime[0].value</c>.</summary>
     public double? EstimatedCurrentChargeDuration { get; set; }
-    public double? EstimatedFastChargeDuration { get; set; }
-    public double? EstimatedPortableChargeDuration { get; set; }
-    public double? EstimatedStationChargeDuration { get; set; }
+
+    /// <summary>Target state-of-charge percentage for DC (fast) charging, from <c>evStatus.reservChargeInfos.targetSOClist</c>
+    /// entry with <c>plugType == 0</c>.</summary>
+    public double? ChargeLimitDc { get; set; }
+
+    /// <summary>Target state-of-charge percentage for AC (portable/station) charging, from <c>evStatus.reservChargeInfos.targetSOClist</c>
+    /// entry with <c>plugType == 1</c>.</summary>
+    public double? ChargeLimitAc { get; set; }
+
+    /// <summary>Instantaneous charging power in kW, from <c>evStatus.realTimePower</c>.</summary>
+    public double? ChargingPowerKw { get; set; }
 }

@@ -160,6 +160,44 @@ h1:focus {
     color: white;
 }
 
+/* A solid white line sweeping across a solid blue base, with a tail fading back to blue behind it (nothing
+   fades ahead of it — the leading edge is a hard cut straight back to blue). The comet sits in the middle third
+   of a background 3x the button's width, so at both position extremes the button shows plain blue with the
+   comet fully off-screen; background-position animates from 100% down to 0% (not the more obvious 0%->100%)
+   because — with an image wider than its container — that's the direction that actually drags image content
+   left to right. Holding at 0% for the remainder of the cycle produces the pause before it snaps back and repeats. */
+@keyframes charging-sweep {
+    0% {
+        background-position: 100% 0;
+    }
+
+    60% {
+        background-position: 0% 0;
+    }
+
+    100% {
+        background-position: 0% 0;
+    }
+}
+
+.btn.charging-active {
+    background-image: linear-gradient(90deg,
+        #0d6efd 0%,
+        #0d6efd 40%,
+        #ffffff 54%,
+        #ffffff 55%,
+        #0d6efd 55.5%,
+        #0d6efd 100%);
+    background-size: 300% 100%;
+    border-color: transparent;
+    color: white;
+    animation: charging-sweep 2.5s linear infinite;
+}
+
+.btn.charging-active svg {
+    fill: white;
+}
+
 /* Home's list-group rows have differing content (some show a status line under the title, some don't), which
    left them different heights. A shared min-height keeps every row the same height regardless of how much
    content it has, and (combined with align-items-center already on each row) keeps that content vertically
