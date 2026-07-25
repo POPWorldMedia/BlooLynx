@@ -27,6 +27,7 @@ This won't live in an app store, because it's unofficial and a hobby project. Fo
 * Download the `.apk` file from [the releases section on GitHub](https://github.com/POPWorldMedia/BlooLynx/releases) in Chrome
 * Tap the three dots in Chrome, then select **Downloads**
 * Select the file and tap **Install**
+* It will warn you, but drill into the drop down and install anyway
 
 ## Android app features
 
