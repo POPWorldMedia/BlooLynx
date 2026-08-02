@@ -22,7 +22,7 @@ else if (_status is not null)
 
     <div class="d-flex justify-content-center text-center @((_status.DriveTrain.IsCharging ?? false) ? "" : "invisible")">
         <div class="mx-4">
-            <h1 class="mb-1">@(_status.DriveTrain.ChargingPowerKw?.ToString("0.#") ?? "unknown")kw</h1>
+            <h1 class="mb-1">@(_status.DriveTrain.ChargingPowerKw?.ToString("0.#") ?? "unknown") kW</h1>
             <div class="small text-capitalize">Current charge rate</div>
         </div>
     </div>
