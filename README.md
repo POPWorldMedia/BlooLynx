@@ -16,6 +16,8 @@ The project also contains an Android app, which you can side load with the direc
 
 It's partly a science project, but also I just don't care for the official app. It has so much junk in it that's not useful or noisy. Less is more, and that was a goal here. I also don't like the notifications and toasts and whatnot that exist only to reflect the non-streaming async nature of the architecture. So that's why BlooLynx exists.
 
+A big add from the second beta was to accept the user's input for battery size and average efficiency to show an estimated range, instead of the crap one sent by the car. I'll never understand why they base the range on the last bit you drove, which is inevitably slowly on a residential street.
+
 The original intent was to build it as a web app, so there'd be nothing to install at all, but the API doesn't play nice with CORS policies in the browser, so it's not possible. I'm a huge proponent of web apps (see [MLocker](https://github.com/POPWorldMedia/MLocker)).
 
 ## To use the Android app
@@ -39,6 +41,7 @@ This won't live in an app store, because it's unofficial and a hobby project. Fo
 * Charge start/stop (EVs)
 * Set charge limits (EVs)
 * Show remaining charge time and power (EVs)
+* Display estimated range based on user input
 * Tire pressure
 * Flash lights
 * Flash lights and honk
