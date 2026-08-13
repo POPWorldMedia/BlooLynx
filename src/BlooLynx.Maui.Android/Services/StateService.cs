@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BlooLynx.Maui.Android.Models;
 using BlooLynx.Models;
 
 namespace BlooLynx.Maui.Android.Services;
@@ -25,14 +26,26 @@ namespace BlooLynx.Maui.Android.Services;
 /// Deliberately separate from <see cref="ConfigStorageKey"/> (not bundled into <see cref="BlueLinkClientConfig"/>'s
 /// storage) so it's unambiguous where it lives and how it's cleared. See <see cref="SetPendingPin"/>/
 /// <see cref="ConfirmPinAsync"/>/<see cref="ForgetPinAsync"/>.</description></item>
+/// <item><description><see cref="VehicleSettingsStorageKeyPrefix"/>: per-vehicle, user-supplied
+/// <see cref="VehicleSettings"/> (battery capacity, efficiency), one entry per VIN. Not cleared by
+/// <see cref="LogoutAsync"/> — these describe the physical vehicle, not the account session, and logging back
+/// in with the same vehicle should find them still in place. See <see cref="GetVehicleSettingsAsync"/>/
+/// <see cref="SaveVehicleSettingsAsync"/>.</description></item>
+/// <item><description><see cref="ShowEstimatedRangeStorageKey"/>: whether the home/charging range display is
+/// currently toggled to the estimated figure rather than the vehicle-reported one — a display preference, not
+/// tied to any one vehicle, so it isn't cleared by <see cref="LogoutAsync"/> either. Loaded eagerly into
+/// <see cref="ShowEstimatedRange"/> by <see cref="InitializeAsync"/> rather than lazily like the others — see
+/// that property's remarks. Written via <see cref="SetShowEstimatedRangeAsync"/>.</description></item>
 /// </list>
-/// <see cref="LogoutAsync"/> removes all three keys explicitly.
+/// <see cref="LogoutAsync"/> removes the first three keys explicitly.
 /// </remarks>
 public class StateService(IHttpClientFactory httpClientFactory)
 {
     private const string ConfigStorageKey = "bloolynx_config";
     private const string SessionStorageKey = "bloolynx_session";
     private const string PinStorageKey = "bloolynx_pin";
+    private const string VehicleSettingsStorageKeyPrefix = "bloolynx_vehicle_settings_";
+    private const string ShowEstimatedRangeStorageKey = "bloolynx_show_estimated_range";
 
     public event Action? StateChanged;
 
@@ -62,12 +75,19 @@ public class StateService(IHttpClientFactory httpClientFactory)
     /// network re-fetch — as long as they mutate the cached instance rather than replacing it.</summary>
     public Status? CachedStatus { get; set; }
 
+    /// <summary>Whether the range display should default to the estimated figure rather than the vehicle-reported
+    /// one. Loaded up front by <see cref="InitializeAsync"/> — before <c>Routes</c> renders anything past its own
+    /// loading spinner — specifically so <c>VehicleControls</c> can read the saved preference on its very first
+    /// render instead of starting from <c>false</c> and flipping a moment later once an async load resolves.</summary>
+    public bool ShowEstimatedRange { get; private set; }
+
     /// <summary>
     /// Loads config from secure storage and, if present, validates the stored session against the API. Safe to call
     /// once at app startup.
     /// </summary>
     public async Task InitializeAsync()
     {
+        ShowEstimatedRange = await LoadAsync<bool?>(ShowEstimatedRangeStorageKey) ?? false;
         _config = await LoadAsync<BlueLinkClientConfig>(ConfigStorageKey);
 
         if (_config?.Username is null || _config.Password is null)
@@ -188,6 +208,23 @@ public class StateService(IHttpClientFactory httpClientFactory)
     /// so the user is never asked for it again. Does not touch <see cref="ConfigStorageKey"/> — the PIN is stored
     /// independently of the username/password.</summary>
     public Task ConfirmPinAsync() => _config?.Pin is null ? Task.CompletedTask : SaveAsync(PinStorageKey, _config.Pin);
+
+    /// <summary>Loads the user-supplied battery capacity/efficiency for <paramref name="vehicle"/>, or an empty
+    /// <see cref="VehicleSettings"/> if none has been saved yet.</summary>
+    public async Task<VehicleSettings> GetVehicleSettingsAsync(Vehicle vehicle) =>
+        await LoadAsync<VehicleSettings>(VehicleSettingsStorageKeyPrefix + vehicle.VehicleConfig.Vin) ?? new VehicleSettings();
+
+    /// <summary>Persists the user-supplied battery capacity/efficiency for <paramref name="vehicle"/>.</summary>
+    public Task SaveVehicleSettingsAsync(Vehicle vehicle, VehicleSettings settings) =>
+        SaveAsync(VehicleSettingsStorageKeyPrefix + vehicle.VehicleConfig.Vin, settings);
+
+    /// <summary>Updates <see cref="ShowEstimatedRange"/> in memory (so every open page reflects the change
+    /// immediately) and persists it for next time.</summary>
+    public Task SetShowEstimatedRangeAsync(bool showEstimated)
+    {
+        ShowEstimatedRange = showEstimated;
+        return SaveAsync(ShowEstimatedRangeStorageKey, showEstimated);
+    }
 
     /// <summary>Locks or unlocks <paramref name="vehicle"/>, waiting for the command to actually complete on the
     /// vehicle (via <see cref="Vehicle.WaitForCommandAsync"/>) rather than trusting the initial HTTP 200.</summary>

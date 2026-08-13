@@ -1,5 +1,6 @@
 @implements IDisposable
 @using BlooLynx
+@using BlooLynx.Maui.Android.Models
 @using BlooLynx.Models
 @inject StateService StateService
 @inject NavigationManager Navigation
@@ -11,10 +12,20 @@
             <h1 class="mb-1">@((Vehicle.VehicleConfig.IsEV ? Status.DriveTrain.StateOfCharge : Status.DriveTrain.FuelLevel)?.ToString() ?? "unknown")%</h1>
             <div class="small text-capitalize">@(Vehicle.VehicleConfig.IsEV ? "Charge" : "Fuel")</div>
         </div>
-        <div class="mx-4">
-            <h1 class="mb-1">@Status.DriveTrain.Range @(Status.DriveTrain.RangeUnit == DistanceUnit.Kilometers ? "km" : "mi")</h1>
-            <div class="small text-capitalize">Range</div>
-        </div>
+        @if (Vehicle.VehicleConfig.IsEV)
+        {
+            <div class="mx-4" role="button" style="cursor: pointer;" @onclick="ToggleRangeDisplay">
+                <h1 class="mb-1">@RangeDisplayText</h1>
+                <div class="small text-capitalize">@(StateService.ShowEstimatedRange ? "Estimated Range" : "Reported Range")</div>
+            </div>
+        }
+        else
+        {
+            <div class="mx-4">
+                <h1 class="mb-1">@RangeDisplayText</h1>
+                <div class="small text-capitalize">Range</div>
+            </div>
+        }
     </div>
 
     <div class="justify-content-center d-flex align-items-center my-2" style="min-height: 1.5rem;">
@@ -109,6 +120,57 @@
     private string? _pinError;
     private string? _actionError;
     private Timer? _chargeRefreshTimer;
+    private Vehicle? _settingsLoadedForVehicle;
+    private VehicleSettings? _vehicleSettings;
+
+    /// <summary>The reported range (as returned by the API) or an estimate computed from the config page's
+    /// battery capacity/efficiency figures and the current state of charge, depending on
+    /// <see cref="StateService.ShowEstimatedRange"/>. "---" stands in for any figure that isn't available, rather
+    /// than a raw number turning misleading (e.g. a stale reported range shown right after the config values are
+    /// entered but before a fresh status fetch). Non-EVs always show the reported figure regardless of the saved
+    /// preference — there's no config page or toggle for them to have set it through, and the estimate's inputs
+    /// (state of charge, battery capacity) don't apply to a gas tank anyway.</summary>
+    private string RangeDisplayText
+    {
+        get
+        {
+            if (Status is null)
+            {
+                return "---";
+            }
+
+            var unitSuffix = Status.DriveTrain.RangeUnit == DistanceUnit.Kilometers ? "km" : "mi";
+
+            if (!StateService.ShowEstimatedRange || Vehicle?.VehicleConfig.IsEV != true)
+            {
+                return $"{Status.DriveTrain.Range} {unitSuffix}";
+            }
+
+            var estimated = EstimatedRangeDistance;
+            return estimated is null ? "---" : $"{estimated.Value:0} {unitSuffix}";
+        }
+    }
+
+    /// <summary>Battery capacity (kWh) times state of charge times efficiency — null if any of the three isn't
+    /// available, e.g. the vehicle isn't an EV or the config page hasn't been filled in yet. The efficiency
+    /// figure is whatever unit the config page's own field was labeled with (miles or km per kW, matching the
+    /// vehicle's reported range unit), so this multiplication needs no separate unit conversion — the result is
+    /// already in the same unit <see cref="RangeDisplayText"/> labels it with.</summary>
+    private double? EstimatedRangeDistance
+    {
+        get
+        {
+            var capacity = _vehicleSettings?.BatteryCapacityKwh;
+            var efficiency = _vehicleSettings?.EfficiencyMilesPerKwh;
+            var soc = Status?.DriveTrain.StateOfCharge;
+            if (capacity is null || efficiency is null || soc is null)
+            {
+                return null;
+            }
+
+            return capacity.Value * (soc.Value / 100.0) * efficiency.Value;
+        }
+    }
 
     private string ChargingStatusText
     {
@@ -135,12 +197,22 @@
         }
     }
 
-    /// <summary>Starts or stops the once-a-minute background poll based on the current charging flag — called
-    /// whenever <see cref="Status"/> could have changed (parameters set, and after this panel's own refreshes).</summary>
-    protected override void OnParametersSet()
+    /// <summary>Starts or stops the once-a-minute background poll based on the current charging flag, and — the
+    /// first time a given <see cref="Vehicle"/> is seen — loads its config-page battery/efficiency settings for
+    /// <see cref="EstimatedRangeDistance"/>. Called whenever <see cref="Status"/> could have changed (parameters
+    /// set, and after this panel's own refreshes).</summary>
+    protected override async Task OnParametersSetAsync()
     {
         UpdateChargeRefreshTimer();
+
+        if (Vehicle is not null && !ReferenceEquals(Vehicle, _settingsLoadedForVehicle))
+        {
+            _settingsLoadedForVehicle = Vehicle;
+            _vehicleSettings = await StateService.GetVehicleSettingsAsync(Vehicle);
+        }
     }
+
+    private Task ToggleRangeDisplay() => StateService.SetShowEstimatedRangeAsync(!StateService.ShowEstimatedRange);
 
     private async Task SetBusyAsync(bool value)
     {

@@ -81,6 +81,16 @@ else
                 <a href="/Other" class="stretched-link"></a>
                 @((MarkupString)ChevronRightSvg)
             </li>
+            @if (_selectedVehicle.VehicleConfig.IsEV)
+            {
+                <li class="list-group-item list-group-item-action home-list-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <h2>Configure</h2>
+                    </div>
+                    <a href="/Configure" class="stretched-link"></a>
+                    @((MarkupString)ChevronRightSvg)
+                </li>
+            }
         </ul>
 
         <p class="mt-5">

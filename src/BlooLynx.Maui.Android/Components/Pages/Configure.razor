@@ -1,0 +1,98 @@
+@page "/Configure"
+@using BlooLynx
+@using BlooLynx.Maui.Android.Models
+@using BlooLynx.Models
+@inject StateService StateService
+@inject NavigationManager Navigation
+
+<BackButton />
+
+@if (_selectedVehicle is null)
+{
+    <p>No vehicle selected.</p>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync">
+        <DataAnnotationsValidator/>
+
+        <div class="mb-3">
+            <label for="batteryCapacity" class="form-label">Your battery size (in kWh)</label>
+            <InputNumber id="batteryCapacity" class="form-control" @bind-Value="_model.BatteryCapacityKwh"/>
+            <ValidationMessage For="() => _model.BatteryCapacityKwh"/>
+        </div>
+
+        <div class="mb-3">
+            <label for="efficiency" class="form-label">Your average efficiency (in @DistanceUnitLabel/kW)</label>
+            <InputNumber id="efficiency" class="form-control" @bind-Value="_model.EfficiencyMilesPerKwh"/>
+            <ValidationMessage For="() => _model.EfficiencyMilesPerKwh"/>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100" disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            }
+            Save
+        </button>
+    </EditForm>
+}
+
+@code {
+    private Vehicle? _selectedVehicle;
+    private readonly ConfigureModel _model = new();
+    private bool _isSaving;
+
+    /// <summary>Matches whatever unit the vehicle's own reported range uses (from the last fetched status), so
+    /// the efficiency figure entered here lines up with <c>VehicleControls</c>'s "Estimated Range" math, which
+    /// multiplies it straight through without a conversion. Falls back to miles if no status has been fetched
+    /// yet — same default <c>VehicleControls</c> uses for an unknown unit.</summary>
+    private string DistanceUnitLabel =>
+        StateService.CachedStatus?.DriveTrain.RangeUnit == DistanceUnit.Kilometers ? "km" : "miles";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedVehicle = StateService.SelectedVehicle;
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        if (!_selectedVehicle.VehicleConfig.IsEV)
+        {
+            Navigation.NavigateTo("/", replace: true);
+            return;
+        }
+
+        var settings = await StateService.GetVehicleSettingsAsync(_selectedVehicle);
+        _model.BatteryCapacityKwh = settings.BatteryCapacityKwh;
+        _model.EfficiencyMilesPerKwh = settings.EfficiencyMilesPerKwh;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_selectedVehicle is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+
+        await StateService.SaveVehicleSettingsAsync(_selectedVehicle, new VehicleSettings
+        {
+            BatteryCapacityKwh = _model.BatteryCapacityKwh,
+            EfficiencyMilesPerKwh = _model.EfficiencyMilesPerKwh
+        });
+
+        Navigation.NavigateTo("/", replace: true);
+    }
+
+    private class ConfigureModel
+    {
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "Must be a positive number.")]
+        public double? BatteryCapacityKwh { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(0, double.MaxValue, ErrorMessage = "Must be a positive number.")]
+        public double? EfficiencyMilesPerKwh { get; set; }
+    }
+}
